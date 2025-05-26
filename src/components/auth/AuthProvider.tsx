@@ -81,7 +81,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (firebaseError.code === 'auth/popup-closed-by-user') {
         toast({
           title: "Sign-in Canceled",
-          description: "You closed the sign-in window. Please try again if you wish to sign in.",
+          description: "The sign-in popup was closed or the process was interrupted. Please try again.",
           variant: "default", 
         });
       } else {
