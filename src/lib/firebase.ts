@@ -41,6 +41,16 @@ const db = getFirestore(app);
 // const storage = getStorage(app); // Optional
 
 const googleProvider = new GoogleAuthProvider();
+// Explicitly add common scopes. Firebase usually requests these by default,
+// but being explicit can sometimes help in tricky environments.
+googleProvider.addScope('profile');
+googleProvider.addScope('email');
+
+// You could also add custom parameters if needed for specific behaviors, e.g.:
+// googleProvider.setCustomParameters({
+//   'login_hint': 'user@example.com', // Pre-fill the email field
+//   'prompt': 'select_account' // Forces account selection, even if only one account is signed in
+// });
 
 export { app, auth, db, googleProvider };
 // export { app, auth, db, storage, googleProvider }; // If using storage
