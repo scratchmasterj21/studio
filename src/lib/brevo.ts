@@ -1,5 +1,4 @@
 
-
 /**
  * WARNING: SECURITY RISK!
  * Sending emails directly from the client-side using an API key is highly insecure for production applications.
@@ -88,7 +87,9 @@ export async function sendEmailViaBrevo({
         }
       }
       
-      console.error('Brevo API Error Full Details:', { status: response.status, bodyAttempt: errorBodyText, parsedJsonAttempt: errorData });
+      console.error(`Brevo API Error Status: ${response.status}`);
+      console.error(`Brevo API Raw Error Body: '${errorBodyText}'`);
+      console.error('Brevo API Parsed Error Data (attempted):', errorData);
       throw new Error(finalErrorMessage);
     }
 
