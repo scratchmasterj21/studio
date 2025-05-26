@@ -1,3 +1,5 @@
+
+
 /**
  * WARNING: SECURITY RISK!
  * Sending emails directly from the client-side using an API key is highly insecure for production applications.
@@ -33,13 +35,11 @@ export async function sendEmailViaBrevo({
   textContent,
 }: SendEmailParams): Promise<{ success: boolean; message?: string; error?: any }> {
   if (!BREVO_API_KEY) {
-    console.error('Brevo API key is not configured.');
-    // In a real app, you might not want to send an email if the key is missing,
-    // but for this exercise, we'll simulate a failure.
+    console.error('Brevo API key is not configured in .env.local (NEXT_PUBLIC_BREVO_API_KEY).');
     return { success: false, message: 'Brevo API key not configured. Email not sent.' };
   }
   if (!BREVO_SENDER_EMAIL) {
-    console.error('Brevo sender email is not configured.');
+    console.error('Brevo sender email is not configured in .env.local (NEXT_PUBLIC_BREVO_SENDER_EMAIL).');
     return { success: false, message: 'Brevo sender email not configured. Email not sent.' };
   }
   
@@ -70,50 +70,42 @@ export async function sendEmailViaBrevo({
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
-      console.error('Brevo API Error:', errorData);
-      throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+      let errorBodyText = await response.text();
+      let errorData: any = {};
+      let finalErrorMessage = `Brevo API HTTP error! Status: ${response.status}.`;
+
+      if (errorBodyText) {
+        finalErrorMessage += ` Raw Response Body: ${errorBodyText}`;
+        try {
+          errorData = JSON.parse(errorBodyText);
+          // Brevo errors usually have a 'message' and sometimes a 'code' field
+          if (errorData.message) {
+            finalErrorMessage = `Brevo API Error: "${errorData.message}" (Code: ${errorData.code || 'N/A'}). Status: ${response.status}.`;
+          }
+        } catch (e) {
+          // If parsing fails, the raw text is already included in finalErrorMessage
+          console.warn('Brevo API error response was not valid JSON, or was empty. Raw text:', errorBodyText, 'Parse error:', e);
+        }
+      }
+      
+      console.error('Brevo API Error Full Details:', { status: response.status, bodyAttempt: errorBodyText, parsedJsonAttempt: errorData });
+      throw new Error(finalErrorMessage);
     }
 
-    // Brevo API returns 201 for success
-    // console.log('Email sent successfully via Brevo:', await response.json());
+    // Brevo API returns 201 for successful dispatch initiation
+    // console.log('Email sent successfully via Brevo:', await response.json()); 
+    // Note: response.json() might fail if Brevo sends 201 with empty body, 
+    // or a non-JSON body for success, which is unusual but possible.
+    // For a 201, it's usually safe to assume success if response.ok is true.
     return { success: true, message: 'Email dispatch initiated successfully via Brevo.' };
   } catch (error) {
-    console.error('Failed to send email via Brevo:', error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
+    console.error('Error sending email via Brevo:', error);
+    const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred while sending email.';
+    // Ensure we return a consistent structure for the calling function
+    return { 
+      success: false, 
+      message: `Failed to send email: ${errorMessage}`,
+      error: error 
+    };
   }
 }
-
-// Example usage (would be called from ticket creation/update logic):
-/*
-import { useToast } from "@/hooks/use-toast";
-
-const { toast } = useToast(); // if used in a component
-
-export const notifyUserTicketCreated = async (userEmail: string, userName: string, ticketTitle: string, ticketId: string) => {
-  if (!userEmail) return;
-
-  const subject = `Your FireDesk Ticket "${ticketTitle}" has been created!`;
-  const htmlContent = `
-    <h1>Ticket Created: ${ticketTitle}</h1>
-    <p>Hello ${userName || 'User'},</p>
-    <p>Your support ticket titled "<strong>${ticketTitle}</strong>" has been successfully created.</p>
-    <p>You can view your ticket details and updates here: <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard/tickets/${ticketId}">View Ticket</a></p>
-    <p>Thank you,<br/>The FireDesk Team</p>
-  `;
-
-  const result = await sendEmailViaBrevo({
-    to: [{ email: userEmail, name: userName }],
-    subject,
-    htmlContent,
-  });
-
-  if (result.success) {
-    // toast({ title: "Notification Email Sent", description: `User ${userEmail} notified about new ticket.` });
-    console.log(`Notification email sent for ticket ${ticketId} to ${userEmail}`);
-  } else {
-    // toast({ title: "Notification Email Failed", description: `Could not notify ${userEmail}. Reason: ${result.error || result.message}`, variant: "destructive" });
-    console.error(`Failed to send notification for ticket ${ticketId} to ${userEmail}: ${result.error || result.message}`);
-  }
-};
-*/
