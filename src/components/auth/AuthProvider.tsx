@@ -1,7 +1,9 @@
+
 "use client";
 
 import type { User } from 'firebase/auth';
 import { onAuthStateChanged, signInWithPopup, signOut as firebaseSignOut } from 'firebase/auth';
+import type { FirebaseError } from 'firebase/app'; // Import FirebaseError for type checking
 import { doc, getDoc, serverTimestamp, setDoc, Timestamp } from 'firebase/firestore';
 import { useRouter, usePathname } from 'next/navigation';
 import type { ReactNode} from 'react';
@@ -75,7 +77,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       toast({ title: "Signed in successfully!" });
     } catch (error) {
       console.error("Error signing in with Google: ", error);
-      toast({ title: "Sign in failed", description: (error as Error).message, variant: "destructive" });
+      const firebaseError = error as FirebaseError; // Cast to FirebaseError
+      if (firebaseError.code === 'auth/popup-closed-by-user') {
+        toast({
+          title: "Sign-in Canceled",
+          description: "You closed the sign-in window. Please try again if you wish to sign in.",
+          variant: "default", 
+        });
+      } else {
+        toast({
+          title: "Sign in Failed",
+          description: firebaseError.message || "An unexpected error occurred.",
+          variant: "destructive",
+        });
+      }
       setLoading(false);
     }
   };
