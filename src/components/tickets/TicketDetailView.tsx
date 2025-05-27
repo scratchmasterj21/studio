@@ -24,7 +24,7 @@ import { useToast } from '@/hooks/use-toast';
 import { addMessageToTicket, updateTicketStatus, assignTicket, getUserProfile } from '@/lib/firestore';
 import TicketStatusBadge from './TicketStatusBadge';
 import TicketPriorityIcon from './TicketPriorityIcon';
-import { MessageSquare, Send, Edit3, Languages, Paperclip, Download, Image as ImageIcon, Video as VideoIcon, FileText } from 'lucide-react';
+import { MessageSquare, Send, Edit3, Languages, Paperclip, Download, Image as ImageIcon, Video as VideoIcon, FileText, AlertTriangle } from 'lucide-react';
 import LoadingSpinner from '../common/LoadingSpinner';
 import StatusSelector from './StatusSelector';
 import AssignTicketDialog from './AssignTicketDialog';
@@ -55,12 +55,19 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
 
   useEffect(() => {
     if (ticket.attachments && ticket.attachments.length > 0) {
-      console.log('[TicketDetailView] Attachments found:', ticket.attachments);
+      console.log('[TicketDetailView] Attachments found for ticket:', ticket.id, ticket.attachments);
       ticket.attachments.forEach(att => {
-        console.log(`[TicketDetailView] Attachment - Name: ${att.name}, URL: ${att.url}, Type: ${att.type}, Size: ${att.size}`);
+        console.log(`[TicketDetailView] Attachment - Name: ${att.name}, URL: ${att.url}, Type: ${att.type}, Size: ${att.size}, Key: ${att.fileKey}`);
+        // Attempt to load the URL directly to see if it's accessible
+        // This is for debugging in development; remove for production if too noisy
+        if (process.env.NODE_ENV === 'development') {
+          fetch(att.url, { method: 'HEAD' })
+            .then(res => console.log(`[TicketDetailView] HEAD request to ${att.url} status: ${res.status}`))
+            .catch(err => console.error(`[TicketDetailView] HEAD request to ${att.url} failed:`, err));
+        }
       });
     }
-  }, [ticket.attachments]);
+  }, [ticket.attachments, ticket.id]);
 
   const messageForm = useForm<MessageFormValues>({
     resolver: zodResolver(messageFormSchema),
@@ -176,12 +183,12 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
         `;
       }
 
-      console.log(`[EmailDebug] Initiating status change email. Ticket ID: ${ticket.id}, New Status: ${newStatus}, Creator: ${ticket.createdBy}, Current User: ${currentUserProfile.uid}`);
+      console.log(`[EmailDebug] Status Change: Attempting to notify creator for ticket ${ticket.id}. Creator UID: ${ticket.createdBy}, Current User UID: ${currentUserProfile.uid}`);
       if (ticket.createdBy !== currentUserProfile.uid) {
-        console.log(`[EmailDebug] Actor is NOT creator. Proceeding to fetch creator profile for UID: ${ticket.createdBy}.`);
+        console.log(`[EmailDebug] Status Change: Current user is NOT the creator. Fetching creator profile.`);
         const creatorProfile = await getUserProfile(ticket.createdBy);
         if (creatorProfile?.email) {
-          console.log(`[EmailDebug] Found creator profile for ${ticket.createdBy} with email ${creatorProfile.email}. Proceeding to send status update email.`);
+          console.log(`[EmailDebug] Status Change: Creator profile found with email ${creatorProfile.email}. Sending email.`);
           const emailResult = await sendEmailViaBrevo({
             to: [{ email: creatorProfile.email, name: creatorProfile.displayName || ticket.createdByName || 'User' }],
             subject: emailSubject,
@@ -194,13 +201,13 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
           }
         } else {
           if (!creatorProfile) {
-            console.warn(`[EmailDebug] Could not send status update email for ticket ${ticket.id}: Creator profile not found for UID ${ticket.createdBy}. Email not sent.`);
+            console.warn(`[EmailDebug] Status Change: Could not send email. Creator profile NOT FOUND for UID ${ticket.createdBy}.`);
           } else {
-            console.warn(`[EmailDebug] Could not send status update email for ticket ${ticket.id}: Creator profile for UID ${ticket.createdBy} found, but no email address. Email not sent.`);
+            console.warn(`[EmailDebug] Status Change: Could not send email. Creator profile found for UID ${ticket.createdBy}, but NO EMAIL address.`);
           }
         }
       } else {
-        console.log(`[EmailDebug] Status update email for ticket ${ticket.id} (new status: ${newStatus}) not sent to creator because current user ${currentUserProfile.uid} IS the creator.`);
+        console.log(`[EmailDebug] Status Change: Email NOT sent to creator because current user IS the creator.`);
       }
 
     } catch (error) {
@@ -230,7 +237,7 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
           `,
         });
       }
-       if (ticket.createdBy !== currentUserProfile.uid && ticket.createdBy !== workerId) { // Don't notify creator if they are the assignee
+       if (ticket.createdBy !== currentUserProfile.uid && ticket.createdBy !== workerId) { 
         const creatorProfile = await getUserProfile(ticket.createdBy);
         if (creatorProfile?.email) {
           await sendEmailViaBrevo({
@@ -298,12 +305,15 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
 
 
   const canManageTicket = currentUserProfile.role === 'admin' || (currentUserProfile.role === 'worker' && ticket.assignedTo === currentUserProfile.uid);
+  
   const lastUpdatedText = ticket.updatedAt && typeof ticket.updatedAt.toDate === 'function' 
     ? format(ticket.updatedAt.toDate(), 'PPpp') 
     : 'N/A';
+    
   const createdAtDate = ticket.createdAt && typeof ticket.createdAt.toDate === 'function' 
     ? format(ticket.createdAt.toDate(), 'PPpp')
     : 'N/A';
+    
   const createdAtFormatted = ticket.createdAt && typeof ticket.createdAt.toDate === 'function' 
     ? format(ticket.createdAt.toDate(), 'MMM d, yyyy')
     : 'N/A';
@@ -403,20 +413,47 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
                             width={300}
                             height={200}
                             className="object-contain w-full h-auto max-h-60"
-                            unoptimized={true} // Temporarily disable optimization for all images for debugging
+                            unoptimized={true} 
+                            onError={(e) => {
+                              console.error(`[TicketDetailView] Failed to load image: ${att.url}`, e.target['error'] || 'Unknown error');
+                              toast({
+                                title: "Image Load Error",
+                                description: `Could not load image: ${att.name}. URL might be invalid or object not public.`,
+                                variant: "destructive"
+                              });
+                            }}
                           />
                         </div>
                       )}
                       {att.type.startsWith('video/') && (
                         <div className="mt-3 rounded-md overflow-hidden border max-w-md mx-auto sm:mx-0">
-                          <video controls className="w-full max-h-80" preload="metadata">
-                            <source src={att.url} type={att.type} />
-                            Your browser does not support the video tag.
+                          <video 
+                            controls 
+                            className="w-full max-h-80" 
+                            preload="metadata"
+                            src={att.url}
+                            onError={(e) => {
+                              console.error(`[TicketDetailView] Failed to load video: ${att.url}`, e.target['error'] || 'Unknown error');
+                              toast({
+                                title: "Video Load Error",
+                                description: `Could not load video: ${att.name}. URL might be invalid or object not public.`,
+                                variant: "destructive"
+                              });
+                            }}
+                          >
+                            Your browser does not support the video tag for type {att.type}. URL: <a href={att.url} target="_blank" rel="noopener noreferrer">{att.url}</a>
                           </video>
                         </div>
                       )}
                     </Card>
                   ))}
+                </div>
+                 <div className="mt-3 text-xs text-muted-foreground flex items-start gap-1.5 p-2 border border-dashed rounded-md">
+                    <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                    <span>
+                        If attachments are not displaying correctly, please ensure objects in your R2 bucket ('uploads/' prefix) are set to **publicly readable**. 
+                        Also, verify your R2 bucket's CORS policy allows GET requests from this application's origin.
+                    </span>
                 </div>
               </div>
             )}
@@ -547,5 +584,6 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
     </div>
   );
 }
+    
 
     
