@@ -27,7 +27,7 @@ import { useToast } from "@/hooks/use-toast";
 import { createTicket } from "@/lib/firestore";
 import type { TicketCategory, TicketPriority, UserProfile, Attachment } from "@/lib/types";
 import { ticketCategories, ticketPriorities } from "@/config/site";
-import { useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation'; // Using next/navigation as per previous resolution
 import { useState, useRef } from "react";
 import LoadingSpinner from "../common/LoadingSpinner";
 import { sendEmailViaBrevo } from "@/lib/brevo";
@@ -125,55 +125,74 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
   };
 
   const handleFileUpload = async (fileId: string) => {
-    const uploadableFile = uploadableFiles.find(uf => uf.id === fileId);
-    if (!uploadableFile || uploadableFile.status === 'uploading' || uploadableFile.status === 'success') return;
+    const targetIndex = uploadableFiles.findIndex(uf => uf.id === fileId);
+    if (targetIndex === -1) {
+        console.error(`[FileUpload] File with id ${fileId} not found in uploadableFiles.`);
+        return;
+    }
+    
+    const uploadableFile = uploadableFiles[targetIndex];
+    if (!uploadableFile || uploadableFile.status === 'uploading' || uploadableFile.status === 'success') {
+        console.log(`[FileUpload] Skipped upload for ${uploadableFile?.file?.name}: Status is ${uploadableFile?.status}`);
+        return;
+    }
 
     const { file } = uploadableFile;
+    console.log(`[FileUpload] Starting upload for: ${file.name}, Type: ${file.type}, Size: ${file.size}`);
 
-    setUploadableFiles(prev => prev.map(uf => uf.id === fileId ? { ...uf, status: 'uploading', progress: 0 } : uf));
+    setUploadableFiles(prev => prev.map(uf => uf.id === fileId ? { ...uf, status: 'uploading', progress: 0, error: undefined } : uf));
 
     try {
       // 1. Get presigned URL
-      const presignedUrlResponse = await fetch(`/api/upload/presigned-url?filename=${encodeURIComponent(file.name)}&contentType=${encodeURIComponent(file.type)}`);
+      const contentType = file.type || 'application/octet-stream'; // Fallback if browser doesn't provide type
+      console.log(`[FileUpload] Fetching presigned URL for ${file.name} with contentType: ${contentType}`);
+      const presignedUrlResponse = await fetch(`/api/upload/presigned-url?filename=${encodeURIComponent(file.name)}&contentType=${encodeURIComponent(contentType)}`);
+      
+      console.log(`[FileUpload] Presigned URL response status for ${file.name}: ${presignedUrlResponse.status}`);
+
       if (!presignedUrlResponse.ok) {
-        const errorData = await presignedUrlResponse.json();
-        throw new Error(errorData.error || 'Failed to get presigned URL');
+        const errorText = await presignedUrlResponse.text();
+        console.error(`[FileUpload] Failed to get presigned URL for ${file.name}. Status: ${presignedUrlResponse.status}, Body: ${errorText}`);
+        throw new Error(JSON.parse(errorText).error || `Failed to get presigned URL. Status: ${presignedUrlResponse.status}`);
       }
       const { presignedUrl, fileKey, publicUrl, bucket } = await presignedUrlResponse.json();
+      console.log(`[FileUpload] Got presigned URL for ${file.name}: ${presignedUrl}`);
 
       // 2. Upload file to R2 using PUT
+      console.log(`[FileUpload] Starting PUT to R2 for ${file.name} with Content-Type: ${contentType}`);
       const uploadResponse = await fetch(presignedUrl, {
         method: 'PUT',
         body: file,
         headers: {
-          'Content-Type': file.type,
+          'Content-Type': contentType,
         },
-        // Note: For progress, fetch doesn't directly support it.
-        // For real progress, XMLHttpRequest or a library like Axios is needed.
-        // We'll simulate progress completion here.
       });
 
+      console.log(`[FileUpload] R2 PUT response status for ${file.name}: ${uploadResponse.status}`);
+
       if (!uploadResponse.ok) {
-        throw new Error(`Upload failed with status: ${uploadResponse.status}`);
+        const errorText = await uploadResponse.text();
+        console.error(`[FileUpload] R2 Upload failed for ${file.name}. Status: ${uploadResponse.status}, Body: ${errorText}`);
+        throw new Error(`Upload failed with status: ${uploadResponse.status}. R2 Message: ${errorText}`);
       }
       
-      // For demo purposes, set progress to 100 after fetch 'completes'
+      console.log(`[FileUpload] Successfully uploaded ${file.name} to R2.`);
       setUploadableFiles(prev => prev.map(uf => uf.id === fileId ? { 
         ...uf, 
         progress: 100, 
         status: 'success',
         uploadedAttachment: {
-          id: uuidv4(), // This ID is for Firestore array elements
+          id: uuidv4(),
           name: file.name,
           url: publicUrl,
-          type: file.type,
+          type: contentType,
           size: file.size,
           fileKey: fileKey,
         }
       } : uf));
 
     } catch (error: any) {
-      console.error("Error uploading file:", file.name, error);
+      console.error(`[FileUpload] Error during upload process for ${file.name}:`, error);
       setUploadableFiles(prev => prev.map(uf => uf.id === fileId ? { ...uf, status: 'error', error: error.message || 'Upload failed' } : uf));
       toast({
         title: `Upload Error: ${file.name}`,
@@ -470,3 +489,5 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
     </Form>
   );
 }
+
+    
