@@ -71,25 +71,28 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const filename = searchParams.get('filename');
     const contentType = searchParams.get('contentType');
+    const userId = searchParams.get('userId');
 
-    if (!filename || !contentType) {
-      return NextResponse.json({ error: 'Filename and contentType query parameters are required' }, { status: 400 });
+    if (!filename || !contentType || !userId) {
+      return NextResponse.json({ error: 'Filename, contentType, and userId query parameters are required' }, { status: 400 });
     }
 
     const sanitizedFilename = filename.replace(/[^a-zA-Z0-9._\-\s]/g, '').replace(/\s+/g, '_');
-    const uniqueKey = `uploads/${uuidv4()}-${sanitizedFilename}`;
+    const uniqueKey = `uploads/${userId}/${uuidv4()}-${sanitizedFilename}`;
 
     const command = new PutObjectCommand({
       Bucket: R2_BUCKET_NAME,
       Key: uniqueKey,
       ContentType: contentType,
+      // You can add ACL: 'public-read' here if your bucket isn't public by default and you want to make individual objects public on upload
+      // However, for R2, managing public access at the bucket level (via r2.dev or public bucket settings) is often simpler.
     });
 
     const expiresIn = 300; // 5 minutes
     const presignedUrl = await getSignedUrl(s3Client, command, { expiresIn });
 
     let publicFileUrl = `${uniqueKey}`; 
-    const publicUrlBase = getPublicUrlBase(); // This function now also logs its decision path
+    const publicUrlBase = getPublicUrlBase(); 
     let publicUrlNote = "";
 
     if (publicUrlBase) {

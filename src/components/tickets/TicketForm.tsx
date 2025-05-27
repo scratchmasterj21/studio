@@ -63,7 +63,7 @@ interface TicketFormProps {
 }
 
 // IMPORTANT: Replace these placeholder values in src/lib/firestore.ts with the actual UID and display name of your default support agent.
-const DEFAULT_WORKER_UID = "REPLACE_WITH_DEFAULT_WORKER_UID"; 
+const DEFAULT_WORKER_UID = "JoKT2FdbqzczhTQf5KumE865Tdh2"; 
 // const DEFAULT_WORKER_NAME = "Default Support Agent"; // This is defined in firestore.ts
 
 export default function TicketForm({ userProfile }: TicketFormProps) {
@@ -128,22 +128,22 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
     const { file, id: fileId } = fileEntry;
 
     setUploadableFiles(prevFiles => {
-        const currentFileInState = prevFiles.find(uf => uf.id === fileId);
-        if (currentFileInState && (currentFileInState.status === 'uploading' || currentFileInState.status === 'success')) {
-            console.log(`[FileUpload] Skipped upload for ${file.name}: Status is ${currentFileInState.status}.`);
-            return prevFiles; // Do not modify state if already uploading or success
-        }
-        return prevFiles.map(uf =>
-            uf.id === fileId ? { ...uf, status: 'uploading', progress: 0, error: undefined } : uf
-        );
+      const currentFileInState = prevFiles.find(uf => uf.id === fileId);
+      if (currentFileInState && (currentFileInState.status === 'uploading' || currentFileInState.status === 'success')) {
+          console.log(`[FileUpload] Skipped upload for ${file.name}: Status is ${currentFileInState.status}.`);
+          return prevFiles;
+      }
+      return prevFiles.map(uf =>
+          uf.id === fileId ? { ...uf, status: 'uploading', progress: 0, error: undefined } : uf
+      );
     });
     
     console.log(`[FileUpload] Starting upload for: ${file.name}, Type: ${file.type}, Size: ${file.size}`);
 
     try {
       const contentType = file.type || 'application/octet-stream';
-      console.log(`[FileUpload] Fetching presigned URL for ${file.name} with contentType: ${contentType}`);
-      const presignedUrlResponse = await fetch(`/api/upload/presigned-url?filename=${encodeURIComponent(file.name)}&contentType=${encodeURIComponent(contentType)}`);
+      console.log(`[FileUpload] Fetching presigned URL for ${file.name} with contentType: ${contentType} and userId: ${userProfile.uid}`);
+      const presignedUrlResponse = await fetch(`/api/upload/presigned-url?filename=${encodeURIComponent(file.name)}&contentType=${encodeURIComponent(contentType)}&userId=${encodeURIComponent(userProfile.uid)}`);
       
       console.log(`[FileUpload] Presigned URL response status for ${file.name}: ${presignedUrlResponse.status}`);
 
@@ -173,7 +173,7 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
         throw new Error(`Upload to storage failed for ${file.name}. Status: ${uploadResponse.status}. Message: ${errorText || 'No additional error message from storage provider.'}`);
       }
       
-      console.log(`[FileUpload] Successfully uploaded ${file.name} to R2.`);
+      console.log(`[FileUpload] Successfully uploaded ${file.name} to R2. File key: ${fileKey}, Public URL: ${publicUrl}`);
       setUploadableFiles(prev => prev.map(uf => uf.id === fileId ? { 
         ...uf, 
         progress: 100, 
@@ -193,7 +193,7 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
       
       let detailedErrorMessage = "Failed to upload file. Check your network connection.";
       if (error.message && error.message.toLowerCase().includes('failed to fetch')) {
-        detailedErrorMessage = "Upload failed. This could be a network issue or a CORS configuration problem with the storage provider. Please check your browser console and ensure R2 CORS settings are correct.";
+        detailedErrorMessage = "Upload failed. This could be a network issue or a CORS configuration problem with the storage provider (Cloudflare R2). Please check your browser console for more details and ensure R2 CORS settings allow PUT requests from this origin.";
       } else if (error.message) {
         detailedErrorMessage = error.message;
       }
