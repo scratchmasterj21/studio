@@ -24,7 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { createTicket, getUserProfile } from "@/lib/firestore"; // Added getUserProfile
+import { createTicket, getUserProfile } from "@/lib/firestore";
 import type { TicketCategory, TicketPriority, UserProfile } from "@/lib/types";
 import { ticketCategories, ticketPriorities } from "@/config/site";
 import { useRouter } from "next/navigation";
@@ -35,15 +35,14 @@ import { sendEmailViaBrevo } from "@/lib/brevo";
 const ticketFormSchema = z.object({
   title: z.string().min(5, "Title must be at least 5 characters.").max(100, "Title must be 100 characters or less."),
   description: z.string().min(10, "Description must be at least 10 characters.").max(1000, "Description must be 1000 characters or less."),
-  category: z.enum(ticketCategories as [TicketCategory, ...TicketCategory[]]), // Cast to satisfy Zod's non-empty array requirement
+  category: z.enum(ticketCategories as [TicketCategory, ...TicketCategory[]]),
   priority: z.enum(ticketPriorities as [TicketPriority, ...TicketPriority[]]),
 });
 
 type TicketFormValues = z.infer<typeof ticketFormSchema>;
 
 interface TicketFormProps {
-  userProfile: UserProfile; // To set createdBy
-  // ticket?: Ticket; // For editing existing tickets (optional feature)
+  userProfile: UserProfile;
 }
 
 export default function TicketForm({ userProfile }: TicketFormProps) {
@@ -67,7 +66,6 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
       const ticketData = {
         ...values,
         createdBy: userProfile.uid,
-        // createdByName will be set in createTicket based on userProfile
       };
       
       const ticketId = await createTicket(ticketData, userProfile);
@@ -76,24 +74,55 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
         description: `Your ticket "${values.title}" has been submitted.`,
       });
 
-      // Send email notification
+      const ticketLink = `${typeof window !== 'undefined' ? window.location.origin : ''}/dashboard/tickets/${ticketId}`;
+      const standardFooter = `
+        <p style="font-size: 0.9em; color: #555555; margin-top: 20px; border-top: 1px solid #eeeeee; padding-top: 10px;">
+          This is an automated notification from FireDesk. Please do not reply directly to this email unless instructed.
+          <br>
+          You can view the ticket <a href="${ticketLink}">here</a>.
+        </p>
+      `;
+
+      // Send email notification to user
       if (userProfile.email) {
          await sendEmailViaBrevo({
            to: [{ email: userProfile.email, name: userProfile.displayName || userProfile.email }],
-           subject: `FireDesk Ticket Created: ${values.title}`,
-           htmlContent: `<h1>Ticket Created: ${values.title}</h1><p>Your ticket has been successfully created with ID: ${ticketId}. You can view it <a href="${typeof window !== 'undefined' ? window.location.origin : ''}/dashboard/tickets/${ticketId}">here</a>.</p>`,
+           subject: `FireDesk Ticket Created: ${values.title} (#${ticketId})`,
+           htmlContent: `
+             <h1>Ticket Created: ${values.title}</h1>
+             <p>Dear ${userProfile.displayName || 'User'},</p>
+             <p>Your support ticket has been successfully created with ID: <strong>#${ticketId}</strong>.</p>
+             <p><strong>Title:</strong> ${values.title}</p>
+             <p><strong>Description:</strong> ${values.description.replace(/\n/g, '<br>')}</p>
+             <p><strong>Category:</strong> ${values.category}</p>
+             <p><strong>Priority:</strong> ${values.priority}</p>
+             <p>We will get back to you as soon as possible.</p>
+             ${standardFooter}
+           `,
          });
       }
       
+      // Send email notification to admin
       const adminEmail = process.env.NEXT_PUBLIC_ADMIN_EMAIL_NOTIFICATIONS;
       if (adminEmail) {
         await sendEmailViaBrevo({
-          to: [{ email: adminEmail }], // Assuming adminEmail is just one email
-          subject: `New FireDesk Ticket: ${values.title} (ID: ${ticketId})`,
-          htmlContent: `<h1>New Ticket Created: ${values.title}</h1><p>A new ticket has been created by ${userProfile.displayName || userProfile.email} (User ID: ${userProfile.uid}).</p><p>Ticket ID: ${ticketId}</p><p>Description: ${values.description}</p><p>View the ticket <a href="${typeof window !== 'undefined' ? window.location.origin : ''}/dashboard/tickets/${ticketId}">here</a>.</p>`,
+          to: [{ email: adminEmail }],
+          subject: `New FireDesk Ticket: ${values.title} by ${userProfile.displayName || userProfile.email} (#${ticketId})`,
+          htmlContent: `
+            <h1>New Ticket Submission</h1>
+            <p>A new support ticket has been created by <strong>${userProfile.displayName || userProfile.email}</strong> (User ID: ${userProfile.uid}).</p>
+            <p><strong>Ticket ID:</strong> #${ticketId}</p>
+            <p><strong>Title:</strong> ${values.title}</p>
+            <p><strong>Description:</strong></p>
+            <div style="padding: 10px; border-left: 3px solid #eee; margin: 10px 0;">
+              <p style="margin:0;">${values.description.replace(/\n/g, '<br>')}</p>
+            </div>
+            <p><strong>Category:</strong> ${values.category}</p>
+            <p><strong>Priority:</strong> ${values.priority}</p>
+            ${standardFooter}
+          `,
         });
       }
-
 
       router.push(`/dashboard/tickets/${ticketId}`);
     } catch (error) {
@@ -204,6 +233,3 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
     </Form>
   );
 }
-
-
-      

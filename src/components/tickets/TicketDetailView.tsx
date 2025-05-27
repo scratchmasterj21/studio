@@ -52,6 +52,16 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
     defaultValues: { message: "" },
   });
 
+  const getTicketLink = () => `${typeof window !== 'undefined' ? window.location.origin : ''}/dashboard/tickets/${ticket.id}`;
+  
+  const getStandardFooter = () => `
+    <p style="font-size: 0.9em; color: #555555; margin-top: 20px; border-top: 1px solid #eeeeee; padding-top: 10px;">
+      This is an automated notification from FireDesk. Please do not reply directly to this email unless instructed.
+      <br>
+      You can view the ticket <a href="${getTicketLink()}">here</a>.
+    </p>
+  `;
+
   const handleAddMessage = async (values: MessageFormValues) => {
     setIsSubmittingMessage(true);
     try {
@@ -67,29 +77,30 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
       // Email Notification Logic
       let recipients: { email: string, name?: string }[] = [];
       
-      // Notify ticket creator if not the current user
       if (ticket.createdBy !== currentUserProfile.uid && ticket.createdByName) { 
         const creatorProfile = await getUserProfile(ticket.createdBy); 
         if (creatorProfile?.email) recipients.push({ email: creatorProfile.email, name: creatorProfile.displayName || ticket.createdByName });
       }
-      // Notify assigned worker if not the current user
       if (ticket.assignedTo && ticket.assignedTo !== currentUserProfile.uid && ticket.assignedToName) {
         const workerProfile = await getUserProfile(ticket.assignedTo); 
         if (workerProfile?.email) recipients.push({ email: workerProfile.email, name: workerProfile.displayName || ticket.assignedToName });
       }
-      // Deduplicate recipients based on email
       recipients = recipients.filter((r, index, self) =>
-        index === self.findIndex((t) => t.email === r.email && r.email != null) // Ensure email is not null
+        index === self.findIndex((t) => t.email === r.email && r.email != null)
       );
       
       if (recipients.length > 0) {
          await sendEmailViaBrevo({
            to: recipients,
-           subject: `Update on Ticket: ${ticket.title}`,
+           subject: `New Reply on FireDesk Ticket: ${ticket.title} (#${ticket.id})`,
            htmlContent: `
-             <p>There's a new reply on ticket <strong>${ticket.title}</strong> (ID: ${ticket.id})</p>
-             <p><strong>${currentUserProfile.displayName || currentUserProfile.email || 'User'}</strong> said: ${values.message}</p>
-             <p>View the ticket <a href="${typeof window !== 'undefined' ? window.location.origin : ''}/dashboard/tickets/${ticket.id}">here</a>.</p>
+             <p>A new reply has been added to FireDesk ticket <strong>${ticket.title}</strong> (#${ticket.id}) by <strong>${currentUserProfile.displayName || currentUserProfile.email} (${currentUserProfile.role})</strong>.</p>
+             <p><strong>Message:</strong></p>
+             <div style="padding: 10px; border-left: 3px solid #eee; margin: 10px 0; background-color: #f9f9f9;">
+               <p style="margin:0;">${values.message.replace(/\n/g, '<br>')}</p>
+             </div>
+             <p>You can view the ticket and reply by clicking the link below.</p>
+             ${getStandardFooter()}
            `,
          });
       }
@@ -109,14 +120,42 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
       await updateTicketStatus(ticket.id, newStatus);
       toast({ title: "Status Updated", description: `Ticket status changed to ${newStatus}.` });
 
-      // Email Notification Logic
-      if (ticket.createdBy !== currentUserProfile.uid && ticket.createdByName) {
+      let emailSubject = '';
+      let emailHtmlContent = '';
+      const ticketCreatorName = ticket.createdByName || 'User';
+
+      if (newStatus === 'Resolved') {
+        emailSubject = `Update: Your FireDesk Ticket '${ticket.title}' (#${ticket.id}) Has Been Resolved`;
+        emailHtmlContent = `
+          <p>Dear ${ticketCreatorName},</p>
+          <p>We've marked your ticket <strong>${ticket.title}</strong> (#${ticket.id}) as <strong>Resolved</strong>.</p>
+          <p>If you feel the issue isn't fully addressed, please reply to the ticket by visiting the link below. Otherwise, no further action is needed from your side.</p>
+          ${getStandardFooter()}
+        `;
+      } else if (newStatus === 'Closed') {
+        emailSubject = `Your FireDesk Ticket '${ticket.title}' (#${ticket.id}) Has Been Closed`;
+        emailHtmlContent = `
+          <p>Dear ${ticketCreatorName},</p>
+          <p>Your ticket <strong>${ticket.title}</strong> (#${ticket.id}) has been <strong>Closed</strong>.</p>
+          <p>We hope your issue was resolved to your satisfaction. If you have any further questions, please feel free to submit a new ticket.</p>
+          ${getStandardFooter()}
+        `;
+      } else {
+        emailSubject = `FireDesk Ticket Status Updated: ${ticket.title} (#${ticket.id}) to ${newStatus}`;
+        emailHtmlContent = `
+          <p>Dear ${ticketCreatorName},</p>
+          <p>The status of your ticket <strong>${ticket.title}</strong> (#${ticket.id}) has been updated to <strong>${newStatus}</strong>.</p>
+          ${getStandardFooter()}
+        `;
+      }
+
+      if (ticket.createdBy !== currentUserProfile.uid) {
         const creatorProfile = await getUserProfile(ticket.createdBy);
         if (creatorProfile?.email) {
           await sendEmailViaBrevo({
             to: [{ email: creatorProfile.email, name: creatorProfile.displayName || ticket.createdByName }],
-            subject: `Ticket Status Updated: ${ticket.title}`,
-            htmlContent: `<p>The status of your ticket <strong>${ticket.title}</strong> has been updated to <strong>${newStatus}</strong>.</p><p>View the ticket <a href="${typeof window !== 'undefined' ? window.location.origin : ''}/dashboard/tickets/${ticket.id}">here</a>.</p>`,
+            subject: emailSubject,
+            htmlContent: emailHtmlContent,
           });
         }
       }
@@ -139,18 +178,27 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
       if (workerProfile?.email) {
         await sendEmailViaBrevo({
           to: [{ email: workerProfile.email, name: workerProfile.displayName || workerName }],
-          subject: `New Ticket Assigned to You: ${ticket.title}`,
-          htmlContent: `<p>You have been assigned a new ticket: <strong>${ticket.title}</strong> (ID: ${ticket.id}).</p><p>View the ticket <a href="${typeof window !== 'undefined' ? window.location.origin : ''}/dashboard/tickets/${ticket.id}">here</a>.</p>`,
+          subject: `New Ticket Assignment: ${ticket.title} (#${ticket.id})`,
+          htmlContent: `
+            <p>Hello ${workerProfile.displayName || workerName},</p>
+            <p>You have been assigned a new ticket: <strong>${ticket.title}</strong> (#${ticket.id}).</p>
+            <p>Please review the ticket details and take appropriate action.</p>
+            ${getStandardFooter()}
+          `,
         });
       }
-      // Also notify ticket creator
        if (ticket.createdBy !== currentUserProfile.uid && ticket.createdByName) {
         const creatorProfile = await getUserProfile(ticket.createdBy);
         if (creatorProfile?.email) {
           await sendEmailViaBrevo({
             to: [{ email: creatorProfile.email, name: creatorProfile.displayName || ticket.createdByName }],
-            subject: `Ticket Assigned: ${ticket.title}`,
-            htmlContent: `<p>Your ticket <strong>${ticket.title}</strong> has been assigned to ${workerName}.</p><p>View the ticket <a href="${typeof window !== 'undefined' ? window.location.origin : ''}/dashboard/tickets/${ticket.id}">here</a>.</p>`,
+            subject: `FireDesk Ticket Assigned: ${ticket.title} (#${ticket.id}) to ${workerName}`,
+            htmlContent: `
+              <p>Dear ${creatorProfile.displayName || ticket.createdByName},</p>
+              <p>Your ticket <strong>${ticket.title}</strong> (#${ticket.id}) has been assigned to <strong>${workerName}</strong>.</p>
+              <p>They will be looking into your issue shortly.</p>
+              ${getStandardFooter()}
+            `,
           });
         }
       }
@@ -167,7 +215,6 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <div className="lg:col-span-2 space-y-6">
-        {/* Ticket Main Info Card */}
         <Card className="shadow-lg">
           <CardHeader>
             <div className="flex justify-between items-start">
@@ -196,7 +243,6 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
           </CardFooter>
         </Card>
 
-        {/* Messages Section */}
         <Card className="shadow-md">
           <CardHeader>
             <CardTitle className="text-xl flex items-center"><MessageSquare className="mr-2 h-5 w-5" /> Communication History</CardTitle>
@@ -216,8 +262,7 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
           </CardContent>
         </Card>
 
-        {/* Add Reply Form */}
-        {ticket.status !== 'Closed' && ticket.status !== 'Resolved' && (
+        {ticket.status !== 'Closed' && (
           <Card className="shadow-md">
             <CardHeader>
               <CardTitle className="text-xl flex items-center"><Edit3 className="mr-2 h-5 w-5" /> Add Your Reply</CardTitle>
@@ -249,7 +294,6 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
         )}
       </div>
 
-      {/* Sidebar for Actions and Info */}
       <div className="lg:col-span-1 space-y-6">
         <Card className="shadow-md">
           <CardHeader>
@@ -294,7 +338,7 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
                 <StatusSelector
                   currentStatus={ticket.status}
                   onStatusChange={handleStatusChange}
-                  disabled={isUpdatingStatus}
+                  disabled={isUpdatingStatus || ticket.status === 'Closed'}
                 />
                  {isUpdatingStatus && <LoadingSpinner size="sm" className="mt-2"/>}
               </div>
@@ -312,7 +356,6 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
             </CardContent>
           </Card>
         )}
-        {/* Optional: File attachments can be listed here */}
       </div>
     </div>
   );
