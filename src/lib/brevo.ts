@@ -73,16 +73,26 @@ export async function sendEmailViaBrevo({
       let errorData: any = {};
       let finalErrorMessage = `Brevo API HTTP error! Status: ${response.status}.`;
 
+      if (response.status === 401) {
+        finalErrorMessage = `Brevo API Error (401 Unauthorized): Authentication failed. Please check your Brevo API key (NEXT_PUBLIC_BREVO_API_KEY) in your .env.local file and ensure it's correct and active.`;
+      }
+
       if (errorBodyText) {
-        finalErrorMessage += ` Raw Response Body: ${errorBodyText}`;
+        // Append raw response body if not already a 401 or if it might contain more info
+        if (response.status !== 401 || !errorData.message) {
+           finalErrorMessage += ` Raw Response Body: ${errorBodyText}`;
+        }
         try {
           errorData = JSON.parse(errorBodyText);
           // Brevo errors usually have a 'message' and sometimes a 'code' field
-          if (errorData.message) {
+          if (errorData.message && response.status !== 401) { // Don't override specific 401 message unless new info
             finalErrorMessage = `Brevo API Error: "${errorData.message}" (Code: ${errorData.code || 'N/A'}). Status: ${response.status}.`;
+          } else if (errorData.message && response.status === 401) {
+            // If it's a 401 AND there's a message, append it.
+             finalErrorMessage += ` Brevo's message: "${errorData.message}" (Code: ${errorData.code || 'N/A'}).`;
           }
         } catch (e) {
-          // If parsing fails, the raw text is already included in finalErrorMessage
+          // If parsing fails, the raw text is already included in finalErrorMessage for non-401 or if 401 and no message yet
           console.warn('Brevo API error response was not valid JSON, or was empty. Raw text:', errorBodyText, 'Parse error:', e);
         }
       }
