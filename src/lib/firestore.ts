@@ -26,8 +26,8 @@ import { ticketStatuses } from '@/config/site';
 
 // --- Default Worker Configuration ---
 // IMPORTANT: Replace these placeholder values with the actual UID and display name of your default support agent.
-const DEFAULT_WORKER_UID = "REPLACE_WITH_DEFAULT_WORKER_UID";
-const DEFAULT_WORKER_NAME = "Default Support Agent"; // Or the actual name
+const DEFAULT_WORKER_UID = "JoKT2FdbqzczhTQf5KumE865Tdh2";
+const DEFAULT_WORKER_NAME = "John Carlo Limpiada"; // Or the actual name
 
 // User Profile Functions
 export const createUserProfile = async (userAuth: any, additionalData = {}): Promise<void> => {

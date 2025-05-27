@@ -133,15 +133,13 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
          const emailSent = await sendEmailViaBrevo({
            to: recipients,
            subject: `New Reply on FireDesk Ticket: ${ticket.title} (#${ticket.id.substring(0,8)})`,
-           htmlContent: `
-             <p>A new reply has been added to FireDesk ticket <strong>${ticket.title}</strong> (#${ticket.id.substring(0,8)}) by <strong>${currentUserProfile.displayName || currentUserProfile.email} (${currentUserProfile.role})</strong>.</p>
-             <p><strong>Message:</strong></p>
-             <div style="padding: 10px; border-left: 3px solid #eee; margin: 10px 0; background-color: #f9f9f9;">
-               <p style="margin:0;">${values.message.replace(/\n/g, '<br>')}</p>
-             </div>
-             <p>You can view the ticket and reply by clicking the link below.</p>
-             ${getStandardFooter()}
-           `,
+           htmlContent: `<p>A new reply has been added to FireDesk ticket <strong>${ticket.title}</strong> (#${ticket.id.substring(0,8)}) by <strong>${currentUserProfile.displayName || currentUserProfile.email} (${currentUserProfile.role})</strong>.</p>\
+<p><strong>Message:</strong></p>\
+<div style="padding: 10px; border-left: 3px solid #eee; margin: 10px 0; background-color: #f9f9f9;">\
+<p style="margin:0;">${values.message.replace(/\n/g, '<br>')}</p>\
+</div>\
+<p>You can view the ticket and reply by clicking the link below.</p>\
+${getStandardFooter()}`,
          });
          if(!emailSent.success){
             console.warn("[EmailDebug] Failed to send 'new reply' email notification(s):", emailSent.message, emailSent.error);
@@ -272,15 +270,64 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
   const handleDeleteTicket = async () => {
     setIsDeletingTicket(true);
     try {
-      await deleteTicket(ticket.id);
-      toast({ title: "Ticket Deleted", description: `Ticket "${ticket.title}" has been successfully deleted.` });
+      // Step 1: Delete attachments from R2 if they exist
+      if (ticket.attachments && ticket.attachments.length > 0) {
+        console.log(`[TicketDelete] Deleting ${ticket.attachments.length} R2 attachments for ticket ${ticket.id}`);
+        const deletionPromises = ticket.attachments.map(async (att) => {
+          if (att.fileKey) {
+            try {
+              const response = await fetch('/api/r2-delete-object', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fileKey: att.fileKey }),
+              });
+              const result = await response.json();
+              if (!response.ok || !result.success) {
+                const errorMessage = result.error || result.message || 'Unknown R2 deletion error';
+                console.warn(`[TicketDelete] Failed to delete R2 attachment ${att.fileKey} (name: ${att.name}) for ticket ${ticket.id}: ${errorMessage}`);
+                toast({
+                  title: `R2 Attachment Deletion Failed`,
+                  description: `Could not delete '${att.name}' from storage. Details: ${errorMessage}`,
+                  variant: "destructive",
+                  duration: 7000,
+                });
+                // We don't re-throw here, allowing Firestore deletion to proceed even if some R2 deletions fail.
+              } else {
+                console.log(`[TicketDelete] Successfully deleted R2 attachment ${att.fileKey} (name: ${att.name}) for ticket ${ticket.id}`);
+              }
+            } catch (r2Error) {
+              console.error(`[TicketDelete] Network or other error calling R2 delete API for ${att.fileKey} (name: ${att.name}):`, r2Error);
+              toast({
+                title: `R2 Attachment Deletion Error`,
+                description: `Error trying to delete '${att.name}' from storage. Check console.`,
+                variant: "destructive",
+                duration: 7000,
+              });
+            }
+          } else {
+            console.warn(`[TicketDelete] Attachment '${att.name}' for ticket ${ticket.id} is missing a fileKey. Cannot delete from R2.`);
+          }
+        });
+        // Wait for all R2 deletion attempts to complete (settle)
+        await Promise.allSettled(deletionPromises);
+        console.log(`[TicketDelete] Finished all R2 attachment deletion attempts for ticket ${ticket.id}`);
+      } else {
+        console.log(`[TicketDelete] No R2 attachments to delete for ticket ${ticket.id}`);
+      }
+
+      // Step 2: Delete the ticket document from Firestore
+      console.log(`[TicketDelete] Proceeding to delete Firestore document for ticket ${ticket.id}`);
+      await deleteTicket(ticket.id); // This function only deletes from Firestore
+      toast({ title: "Ticket Deleted", description: `Ticket "${ticket.title}" has been successfully deleted. Associated attachments were also attempted to be removed from storage.` });
       router.push('/dashboard'); // Redirect to dashboard after deletion
     } catch (error) {
-      console.error("Error deleting ticket:", error);
-      toast({ title: "Error", description: "Failed to delete ticket. Please try again.", variant: "destructive" });
-      setIsDeletingTicket(false);
+      // This catch block will primarily catch errors from deleteTicket (Firestore deletion)
+      // or if an R2 deletion error was re-thrown (which we are currently not doing).
+      console.error("Error during the overall ticket deletion process (Firestore or critical R2 error):", error);
+      toast({ title: "Ticket Deletion Error", description: "Failed to delete the ticket from Firestore. Please try again or check server logs.", variant: "destructive" });
+      setIsDeletingTicket(false); // Only reset if we didn't redirect
     }
-    // No finally block needed here as redirection should happen on success
+    // No 'finally' needed here, as redirection on success unmounts the component.
   };
 
   const handleTranslateDescription = async () => {
@@ -393,15 +440,14 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
                 {ticket.priority || "N/A"} Priority
               </div>
             </div>
-
-            {attachmentLoadErrorOccurred && (
+             {attachmentLoadErrorOccurred && (
               <Alert variant="destructive" className="mt-4">
                 <AlertTriangle className="h-4 w-4" />
                 <AlertTitle>Attachment Loading Error</AlertTitle>
                 <AlertDescription>
-                  One or more attachments could not be loaded. This often means the files in Cloudflare R2 are not publicly readable, or there's a CORS issue.
-                  An "Invalid Argument Authorization" error when accessing the file URL directly points to R2 object permissions.
-                  Please ensure objects in your R2 bucket (especially under 'uploads/') are set to **publicly readable** and that your R2 bucket's CORS policy allows GET requests from this application's origin.
+                  One or more attachments could not be loaded. This often means the files in Cloudflare R2 are not publicly readable.
+                  If you see "Invalid Argument Authorization" or 403 Forbidden errors when trying the URL directly, this is a strong indicator of private R2 objects.
+                  Please check your R2 bucket settings (ensure public access is "Allowed" for the bucket or relevant prefixes) and verify your R2 bucket's CORS policy allows GET requests from this application's origin.
                 </AlertDescription>
               </Alert>
             )}
@@ -454,8 +500,9 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
                               console.error(`[TicketDetailView] Failed to load image: ${att.url}. Natural width: ${errorTarget.naturalWidth}. Error:`, 'Unknown image error');
                               toast({
                                 title: "Image Load Error",
-                                description: `Could not load image: ${att.name}. An "Invalid Argument Authorization" error for the URL typically means the R2 object is private. Please check R2 permissions and ensure objects are publicly readable.`,
-                                variant: "destructive"
+                                description: `Could not load image: ${att.name}. An "Invalid Argument Authorization" or 403 Forbidden error for the URL typically means the R2 object is private. Please check R2 public access permissions and ensure objects are publicly readable.`,
+                                variant: "destructive",
+                                duration: 7000,
                               });
                             }}
                           />
@@ -473,21 +520,22 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
                               setAttachmentLoadErrorOccurred(true);
                               const errorTarget = e.target as HTMLVideoElement;
                               const errorCode = errorTarget.error?.code;
-                              const errorMessage = errorTarget.error?.message || "Unknown video error";
+                              let errorMessage = errorTarget.error?.message || "Unknown video error";
                               console.error(`[TicketDetailView] Failed to load video: ${att.url}. Error code: ${errorCode}, Message: ${errorMessage}`);
                               
-                              let toastDescription = `Could not load video: ${att.name}. The URL might be invalid or the object in R2 is not publicly readable.`;
+                              let toastDescription = `Could not load video: ${att.name}.`;
                               if (errorCode === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) { // Code 4
-                                toastDescription = `Video format or codec for "${att.name}" is not supported by your browser, or the file might be corrupted. Please try a different video format (e.g., common MP4 H.264). Also ensure the object is publicly readable in R2.`;
+                                toastDescription = `Video format or codec for "${att.name}" is not supported by your browser, or the file might be corrupted. Please try a different video format (e.g., common MP4 H.264). Also ensure the R2 object is publicly readable and the content type is correct (e.g., 'video/mp4').`;
                               } else if (errorMessage.toLowerCase().includes("authorization") || (errorTarget.error && !errorCode)) { 
-                                toastDescription = `Could not load video: ${att.name}. This often indicates an "Invalid Argument Authorization" or similar access error, meaning the R2 object is private. Please check R2 permissions and ensure objects are publicly readable.`;
+                                toastDescription = `Could not load video: ${att.name}. This often indicates an "Invalid Argument Authorization" or similar access error, meaning the R2 object is private. Please check R2 public access permissions and ensure objects are publicly readable.`;
                               } else {
-                                toastDescription += ` Browser error: ${errorMessage} (Code: ${errorCode}). Also ensure the object is publicly readable in R2.`;
+                                toastDescription += ` Browser error: ${errorMessage} (Code: ${errorCode}). Ensure the R2 object is publicly readable and the content type is correctly set in R2.`;
                               }
                               toast({
                                 title: "Video Load Error",
                                 description: toastDescription,
-                                variant: "destructive"
+                                variant: "destructive",
+                                duration: 7000,
                               });
                             }}
                           >
@@ -499,13 +547,13 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
                   ))}
                 </div>
                  {!attachmentLoadErrorOccurred && ticket.attachments && ticket.attachments.length > 0 && (
-                    <div className="mt-3 text-xs text-muted-foreground flex items-start gap-1.5 p-2 border border-dashed rounded-md">
+                    <Alert variant="default" className="mt-3 text-xs text-muted-foreground p-3 border-dashed">
                         <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-                        <span>
-                            If attachments are not displaying correctly, please ensure objects in your R2 bucket (especially under the 'uploads/' prefix) are set to **publicly readable**.
-                            Also, verify your R2 bucket's CORS policy allows GET requests from this application's origin.
-                        </span>
-                    </div>
+                        <AlertDescription>
+                            If attachments are not displaying correctly (e.g., errors like "Invalid Argument Authorization" or 403 Forbidden on the URL), please ensure objects in your R2 bucket (especially under the 'uploads/' prefix) are set to **publicly readable**.
+                            You can do this in your Cloudflare R2 bucket settings (Settings tab -> Public access -> Allow). Also, verify your R2 bucket's CORS policy allows GET requests from this application's origin.
+                        </AlertDescription>
+                    </Alert>
                  )}
               </div>
             )}
@@ -643,7 +691,7 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
                 <AlertDialogTrigger asChild>
                   <Button variant="destructive" className="w-full" disabled={isDeletingTicket}>
                     {isDeletingTicket ? <LoadingSpinner size="sm" className="mr-2" /> : <Trash2 className="mr-2 h-4 w-4" />}
-                    Delete Ticket
+                    Delete Ticket & Attachments
                   </Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent>
@@ -651,7 +699,8 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
                     <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                     <AlertDialogDescription>
                       This action cannot be undone. This will permanently delete the ticket
-                      titled "{ticket.title || "this ticket"}" and all of its associated data, including messages and attachments.
+                      titled "{ticket.title || "this ticket"}" and all of its associated data, 
+                      including messages and attempts to remove attachments from storage.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
@@ -662,7 +711,7 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
                       className="bg-destructive hover:bg-destructive/90"
                     >
                       {isDeletingTicket ? <LoadingSpinner size="sm" className="mr-2" /> : null}
-                      Yes, delete ticket
+                      Yes, delete ticket & attachments
                     </AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>
@@ -674,3 +723,7 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
     </div>
   );
 }
+
+    
+
+    
