@@ -13,6 +13,13 @@ interface TicketListItemProps {
 }
 
 export default function TicketListItem({ ticket }: TicketListItemProps) {
+  const lastUpdatedText = ticket.updatedAt && typeof ticket.updatedAt.toDate === 'function' 
+    ? formatDistanceToNowStrict(ticket.updatedAt.toDate()) + ' ago' 
+    : 'Processing...';
+  const createdAtDate = ticket.createdAt && typeof ticket.createdAt.toDate === 'function'
+    ? ticket.createdAt.toDate()
+    : null;
+
   return (
     <Link href={`/dashboard/tickets/${ticket.id}`} passHref>
       <Card className="hover:shadow-lg transition-shadow duration-200 cursor-pointer bg-card">
@@ -25,6 +32,11 @@ export default function TicketListItem({ ticket }: TicketListItemProps) {
           </div>
           <CardDescription className="text-xs text-muted-foreground">
             Ticket ID: {ticket.id.substring(0, 8)}...
+            {createdAtDate && (
+                <span title={`Created on ${createdAtDate.toLocaleDateString()} ${createdAtDate.toLocaleTimeString()}`}>
+                  {` · Created ${formatDistanceToNowStrict(createdAtDate)} ago`}
+                </span>
+            )}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -41,9 +53,9 @@ export default function TicketListItem({ ticket }: TicketListItemProps) {
         </CardContent>
         <CardFooter className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 text-xs text-muted-foreground pt-4 border-t">
           <div className="flex flex-col sm:flex-row sm:items-center gap-x-4 gap-y-1">
-             <div className="flex items-center" title={`Created by ${ticket.createdByName}`}>
+             <div className="flex items-center" title={`Created by ${ticket.createdByName || 'Unknown User'}`}>
               <User className="h-3.5 w-3.5 mr-1" />
-              <span>{ticket.createdByName}</span>
+              <span>{ticket.createdByName || 'N/A'}</span>
             </div>
             {ticket.assignedToName && (
               <div className="flex items-center" title={`Assigned to ${ticket.assignedToName}`}>
@@ -54,11 +66,11 @@ export default function TicketListItem({ ticket }: TicketListItemProps) {
             )}
           </div>
           <div className="flex items-center gap-x-4 gap-y-1">
-            <div className="flex items-center" title="Last updated">
+            <div className="flex items-center" title={`Last updated: ${lastUpdatedText}`}>
               <Clock className="h-3.5 w-3.5 mr-1" />
-              {ticket.updatedAt && typeof ticket.updatedAt.toDate === 'function' ? formatDistanceToNowStrict(ticket.updatedAt.toDate()) + ' ago' : 'Processing...'}
+              {lastUpdatedText}
             </div>
-            <div className="flex items-center" title={`${ticket.messages.length} messages`}>
+            <div className="flex items-center" title={`${ticket.messages.length} ${ticket.messages.length === 1 ? 'message' : 'messages'}`}>
                 <MessageSquare className="h-3.5 w-3.5 mr-1" />
                 {ticket.messages.length}
             </div>

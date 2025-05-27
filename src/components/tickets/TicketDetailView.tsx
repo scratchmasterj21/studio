@@ -3,7 +3,7 @@
 
 import { useState } from 'react';
 import { format } from 'date-fns';
-import type { Ticket, UserProfile, TicketStatus, TicketMessage } from '@/lib/types';
+import type { Ticket, UserProfile, TicketStatus } from '@/lib/types'; // Removed TicketMessage as it's not directly used here
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
@@ -24,7 +24,7 @@ import { useToast } from '@/hooks/use-toast';
 import { addMessageToTicket, updateTicketStatus, assignTicket, getUserProfile } from '@/lib/firestore';
 import TicketStatusBadge from './TicketStatusBadge';
 import TicketPriorityIcon from './TicketPriorityIcon';
-import { Clock, User, MessageSquare, Paperclip, Send, Edit3, Users, CheckCircle } from 'lucide-react';
+import { MessageSquare, Send, Edit3 } from 'lucide-react'; // Removed unused icons like Clock, User, Paperclip, CheckCircle, Users
 import LoadingSpinner from '../common/LoadingSpinner';
 import StatusSelector from './StatusSelector';
 import AssignTicketDialog from './AssignTicketDialog';
@@ -56,8 +56,7 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
     if (typeof window !== 'undefined') {
       return `${window.location.origin}/dashboard/tickets/${ticket.id}`;
     }
-    // Fallback for server-side or if window is not available
-    return `/dashboard/tickets/${ticket.id}`;
+    return `/dashboard/tickets/${ticket.id}`; // Fallback
   };
   
   const getStandardFooter = () => `
@@ -80,24 +79,20 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
       messageForm.reset();
       toast({ title: "Message Sent", description: "Your reply has been added to the ticket." });
 
-      // Email Notification Logic for new message
       let recipients: { email: string, name?: string }[] = [];
       
-      // Notify ticket creator if they aren't the one sending the message
       if (ticket.createdBy !== currentUserProfile.uid) { 
         const creatorProfile = await getUserProfile(ticket.createdBy); 
         if (creatorProfile?.email) {
           recipients.push({ email: creatorProfile.email, name: creatorProfile.displayName || ticket.createdByName || 'User' });
         }
       }
-      // Notify assigned worker if they exist and aren't the one sending the message
       if (ticket.assignedTo && ticket.assignedTo !== currentUserProfile.uid) {
         const workerProfile = await getUserProfile(ticket.assignedTo); 
         if (workerProfile?.email) {
           recipients.push({ email: workerProfile.email, name: workerProfile.displayName || ticket.assignedToName || 'Agent' });
         }
       }
-      // Remove duplicates (e.g., if creator is also assigned worker and not the sender)
       recipients = recipients.filter((r, index, self) =>
         index === self.findIndex((t) => t.email === r.email && r.email != null)
       );
@@ -117,7 +112,7 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
            `,
          });
          if(!emailSent.success){
-            console.warn("Failed to send 'new reply' email notification(s):", emailSent.message);
+            console.warn("[EmailDebug] Failed to send 'new reply' email notification(s):", emailSent.message, emailSent.error);
          }
       }
 
@@ -157,7 +152,7 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
           <p>We hope your issue was resolved to your satisfaction. If you have any further questions, please feel free to submit a new ticket.</p>
           ${getStandardFooter()}
         `;
-      } else { // For other statuses like Open, In Progress
+      } else { 
         emailSubject = `FireDesk Ticket Status Updated: ${ticket.title} (#${shortTicketId}) to ${newStatus}`;
         emailHtmlContent = `
           <p>Dear ${ticketCreatorName},</p>
@@ -166,9 +161,9 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
         `;
       }
 
-      // Send email to the ticket creator if they are not the one making the change.
+      console.log(`[EmailDebug] Initiating status change email. Ticket ID: ${ticket.id}, New Status: ${newStatus}, Creator: ${ticket.createdBy}, Current User: ${currentUserProfile.uid}`);
       if (ticket.createdBy !== currentUserProfile.uid) {
-        console.log(`[EmailDebug] Attempting to send status update email for ticket ${ticket.id}. New status: ${newStatus}. Creator: ${ticket.createdBy}. Current user (actor): ${currentUserProfile.uid}. Actor is NOT creator.`);
+        console.log(`[EmailDebug] Actor is NOT creator. Proceeding to fetch creator profile for UID: ${ticket.createdBy}.`);
         const creatorProfile = await getUserProfile(ticket.createdBy);
         if (creatorProfile?.email) {
           console.log(`[EmailDebug] Found creator profile for ${ticket.createdBy} with email ${creatorProfile.email}. Proceeding to send status update email.`);
@@ -207,8 +202,6 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
       toast({ title: "Ticket Assigned", description: `Ticket assigned to ${workerName}.` });
       const shortTicketId = ticket.id.substring(0,8);
 
-      // Email Notification Logic for assignment
-      // Notify the assigned worker
       const workerProfile = await getUserProfile(workerId);
       if (workerProfile?.email) {
         await sendEmailViaBrevo({
@@ -222,7 +215,6 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
           `,
         });
       }
-      // Notify the ticket creator about the assignment, if they are not the one assigning
        if (ticket.createdBy !== currentUserProfile.uid) {
         const creatorProfile = await getUserProfile(ticket.createdBy);
         if (creatorProfile?.email) {
@@ -247,6 +239,16 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
 
 
   const canManageTicket = currentUserProfile.role === 'admin' || (currentUserProfile.role === 'worker' && ticket.assignedTo === currentUserProfile.uid);
+  const lastUpdatedText = ticket.updatedAt && typeof ticket.updatedAt.toDate === 'function' 
+    ? format(ticket.updatedAt.toDate(), 'PPpp') 
+    : 'N/A';
+  const createdAtDate = ticket.createdAt && typeof ticket.createdAt.toDate === 'function' 
+    ? format(ticket.createdAt.toDate(), 'PPpp')
+    : 'N/A';
+  const createdAtFormatted = ticket.createdAt && typeof ticket.createdAt.toDate === 'function' 
+    ? format(ticket.createdAt.toDate(), 'MMM d, yyyy')
+    : 'N/A';
+
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -258,7 +260,7 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
               <TicketStatusBadge status={ticket.status} className="text-sm px-3 py-1"/>
             </div>
             <CardDescription className="text-sm text-muted-foreground">
-              Submitted by {ticket.createdByName} on {ticket.createdAt && typeof ticket.createdAt.toDate === 'function' ? format(ticket.createdAt.toDate(), 'PPpp') : 'Processing...'}
+              Submitted by {ticket.createdByName || 'Unknown User'} on {createdAtDate}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -275,7 +277,7 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
             </div>
           </CardContent>
           <CardFooter className="text-xs text-muted-foreground border-t pt-4">
-            Last updated: {ticket.updatedAt && typeof ticket.updatedAt.toDate === 'function' ? format(ticket.updatedAt.toDate(), 'PPpp') : 'Processing...'}
+            Last updated: {lastUpdatedText}
           </CardFooter>
         </Card>
 
@@ -335,29 +337,31 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
           <CardHeader>
             <CardTitle className="text-lg">Ticket Details</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3 text-sm">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Status:</span>
+          <CardContent className="space-y-3">
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-muted-foreground">Status:</span>
               <TicketStatusBadge status={ticket.status} />
             </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Priority:</span>
-              <span className="font-medium flex items-center"><TicketPriorityIcon priority={ticket.priority} className="mr-1.5" />{ticket.priority}</span>
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-muted-foreground">Priority:</span>
+              <span className="font-medium flex items-center">
+                <TicketPriorityIcon priority={ticket.priority} className="mr-1.5" />{ticket.priority}
+              </span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Category:</span>
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-muted-foreground">Category:</span>
               <span className="font-medium">{ticket.category}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Created By:</span>
-              <span className="font-medium truncate" title={ticket.createdByName}>{ticket.createdByName}</span>
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-muted-foreground">Created By:</span>
+              <span className="font-medium truncate" title={ticket.createdByName || 'Unknown User'}>{ticket.createdByName || 'N/A'}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Created At:</span>
-              <span className="font-medium">{ticket.createdAt && typeof ticket.createdAt.toDate === 'function' ? format(ticket.createdAt.toDate(), 'MMM d, yyyy') : 'Processing...'}</span>
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-muted-foreground">Created At:</span>
+              <span className="font-medium">{createdAtFormatted}</span>
             </div>
-             <div className="flex justify-between">
-              <span className="text-muted-foreground">Assigned To:</span>
+             <div className="flex justify-between items-center">
+              <span className="text-sm text-muted-foreground">Assigned To:</span>
               <span className="font-medium truncate" title={ticket.assignedToName || 'Unassigned'}>{ticket.assignedToName || 'Unassigned'}</span>
             </div>
           </CardContent>
@@ -396,4 +400,3 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
     </div>
   );
 }
-    
