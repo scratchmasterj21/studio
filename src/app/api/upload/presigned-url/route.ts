@@ -14,8 +14,6 @@ const R2_CUSTOM_PUBLIC_URL_BASE = process.env.R2_PUBLIC_URL_BASE; // User-define
 
 if (!R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY || !R2_BUCKET_NAME || !R2_ENDPOINT) {
   console.error('Critical R2 configuration is missing in environment variables for presigned URL generation. Uploads will fail.');
-  // Do not throw here as it might expose internal details in a production environment's initial load
-  // Instead, the request handler will fail if these are not set.
 }
 
 let s3Client: S3Client | null = null;
@@ -27,38 +25,43 @@ if (R2_ACCESS_KEY_ID && R2_SECRET_ACCESS_KEY && R2_BUCKET_NAME && R2_ENDPOINT) {
       accessKeyId: R2_ACCESS_KEY_ID,
       secretAccessKey: R2_SECRET_ACCESS_KEY,
     },
-    // forcePathStyle: true, // Not typically needed for R2 with custom endpoints
   });
 }
 
 function getPublicUrlBase(): string | null {
     if (R2_CUSTOM_PUBLIC_URL_BASE) {
-        // Ensure no trailing slash for custom base URL
+        console.log('[API Presigned URL] Using R2_PUBLIC_URL_BASE from environment:', R2_CUSTOM_PUBLIC_URL_BASE);
         return R2_CUSTOM_PUBLIC_URL_BASE.endsWith('/') ? R2_CUSTOM_PUBLIC_URL_BASE.slice(0, -1) : R2_CUSTOM_PUBLIC_URL_BASE;
     }
+    console.log('[API Presigned URL] R2_PUBLIC_URL_BASE is not set in environment. Attempting to derive from R2_ENDPOINT and R2_BUCKET_NAME.');
     if (R2_ENDPOINT && R2_BUCKET_NAME) {
         try {
             const endpointUrl = new URL(R2_ENDPOINT);
-            // Account ID is typically the first part of the hostname for R2 default endpoints.
-            // e.g., <account_id>.r2.cloudflarestorage.com
-            const accountId = endpointUrl.hostname.split('.')[0]; 
-            if (accountId && endpointUrl.hostname.includes('.r2.cloudflarestorage.com') && accountId.length > 0) { // Added check for accountId.length
-                 // Standard R2 public URL format: https://<bucket>.<account_id>.r2.cloudflarestorage.com
-                 return `https://${R2_BUCKET_NAME}.${accountId}.r2.cloudflarestorage.com`;
+            const accountId = endpointUrl.hostname.split('.')[0];
+            if (accountId && accountId.length > 0 && endpointUrl.hostname.includes('.r2.cloudflarestorage.com')) {
+                 const derivedUrl = `https://${R2_BUCKET_NAME}.${accountId}.r2.cloudflarestorage.com`;
+                 console.log('[API Presigned URL] Derived public URL base:', derivedUrl);
+                 return derivedUrl;
             } else {
-                 console.warn(`[R2 Public URL] Could not reliably derive account ID from R2_ENDPOINT: ${R2_ENDPOINT}. Hostname: ${endpointUrl.hostname}. Derived AccountID: ${accountId}`);
+                 console.warn(`[API Presigned URL] Could not reliably derive account ID from R2_ENDPOINT: ${R2_ENDPOINT}. Hostname: ${endpointUrl.hostname}. Derived AccountID: ${accountId}`);
             }
         } catch (e) {
-            console.warn('[R2 Public URL] Could not parse R2_ENDPOINT to derive public URL base:', e);
+            console.warn('[API Presigned URL] Could not parse R2_ENDPOINT to derive public URL base:', e);
         }
     }
-    console.warn('[R2 Public URL] R2_PUBLIC_URL_BASE is not set and public URL could not be reliably derived from R2_ENDPOINT and R2_BUCKET_NAME. Public URLs for files might be incorrect or missing. Ensure R2 objects are publicly readable for direct viewing.');
-    return null; // Fallback if derivation fails
+    console.warn('[API Presigned URL] Public URL base could not be determined. Public URLs for files might be incorrect or missing. Ensure R2 objects are publicly readable for direct viewing.');
+    return null;
 }
 
 
 export async function GET(request: NextRequest) {
-  if (!s3Client || !R2_BUCKET_NAME) { 
+  // Log the raw environment variable value as seen by the server process
+  console.log('[API Presigned URL Handler] Value of process.env.R2_PUBLIC_URL_BASE at request time:', process.env.R2_PUBLIC_URL_BASE);
+  // The R2_CUSTOM_PUBLIC_URL_BASE variable is already capturing this at module load time.
+  // console.log('[API Presigned URL Handler] Value of R2_CUSTOM_PUBLIC_URL_BASE (module scope):', R2_CUSTOM_PUBLIC_URL_BASE);
+
+
+  if (!s3Client || !R2_BUCKET_NAME) {
     console.error('[API Presigned URL] R2 service is not configured or critical variables are missing on the server.');
     return NextResponse.json({ error: 'R2 service is not configured on the server. File uploads are disabled.' }, { status: 503 });
   }
@@ -72,7 +75,6 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Filename and contentType query parameters are required' }, { status: 400 });
     }
 
-    // Basic sanitization (you might want more robust sanitization)
     const sanitizedFilename = filename.replace(/[^a-zA-Z0-9._\-\s]/g, '').replace(/\s+/g, '_');
     const uniqueKey = `uploads/${uuidv4()}-${sanitizedFilename}`;
 
@@ -80,14 +82,13 @@ export async function GET(request: NextRequest) {
       Bucket: R2_BUCKET_NAME,
       Key: uniqueKey,
       ContentType: contentType,
-      // ContentDisposition: `inline; filename="${sanitizedFilename}"`, // Helps browser suggest filename on download/view
     });
 
     const expiresIn = 300; // 5 minutes
     const presignedUrl = await getSignedUrl(s3Client, command, { expiresIn });
 
-    let publicFileUrl = `${uniqueKey}`; // Default to just the key if base URL cannot be determined
-    const publicUrlBase = getPublicUrlBase();
+    let publicFileUrl = `${uniqueKey}`; 
+    const publicUrlBase = getPublicUrlBase(); // This function now also logs its decision path
     let publicUrlNote = "";
 
     if (publicUrlBase) {
@@ -96,14 +97,16 @@ export async function GET(request: NextRequest) {
         publicUrlNote = `Public URL base for R2 could not be determined. Returning only file key: ${uniqueKey}. Ensure R2_PUBLIC_URL_BASE is set or R2_ENDPOINT and R2_BUCKET_NAME are correct for derivation, and that objects are publicly readable for viewing.`;
         console.warn(`[API Presigned URL] ${publicUrlNote}`);
     }
+    
+    console.log('[API Presigned URL] Final constructed publicFileUrl:', publicFileUrl);
 
     return NextResponse.json({
       presignedUrl,
-      fileKey: uniqueKey, // Key within the bucket
+      fileKey: uniqueKey,
       bucket: R2_BUCKET_NAME,
-      publicUrl: publicFileUrl, // The constructed public URL for viewing/linking
+      publicUrl: publicFileUrl,
       method: 'PUT',
-      ...(publicUrlNote && { note: publicUrlNote }) // Add note if public URL derivation had issues
+      ...(publicUrlNote && { note: publicUrlNote })
     });
 
   } catch (error) {
@@ -112,6 +115,3 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to generate presigned URL', details: errorMessage }, { status: 500 });
   }
 }
-
-
-    
