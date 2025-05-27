@@ -1,3 +1,4 @@
+
 import Link from 'next/link';
 import type { Ticket } from '@/lib/types';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -55,7 +56,7 @@ export default function TicketListItem({ ticket }: TicketListItemProps) {
           <div className="flex items-center gap-x-4 gap-y-1">
             <div className="flex items-center" title="Last updated">
               <Clock className="h-3.5 w-3.5 mr-1" />
-              {formatDistanceToNowStrict(ticket.updatedAt.toDate())} ago
+              {ticket.updatedAt && typeof ticket.updatedAt.toDate === 'function' ? formatDistanceToNowStrict(ticket.updatedAt.toDate()) + ' ago' : 'Processing...'}
             </div>
             <div className="flex items-center" title={`${ticket.messages.length} messages`}>
                 <MessageSquare className="h-3.5 w-3.5 mr-1" />

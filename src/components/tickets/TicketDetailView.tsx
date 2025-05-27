@@ -19,7 +19,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Label } from "@/components/ui/label"; // Added import
+import { Label } from "@/components/ui/label";
 import { useToast } from '@/hooks/use-toast';
 import { addMessageToTicket, updateTicketStatus, assignTicket, getUserProfile } from '@/lib/firestore';
 import TicketStatusBadge from './TicketStatusBadge';
@@ -175,7 +175,7 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
               <TicketStatusBadge status={ticket.status} className="text-sm px-3 py-1"/>
             </div>
             <CardDescription className="text-sm text-muted-foreground">
-              Submitted by {ticket.createdByName} on {format(ticket.createdAt.toDate(), 'PPpp')}
+              Submitted by {ticket.createdByName} on {ticket.createdAt && typeof ticket.createdAt.toDate === 'function' ? format(ticket.createdAt.toDate(), 'PPpp') : 'Processing...'}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -192,7 +192,7 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
             </div>
           </CardContent>
           <CardFooter className="text-xs text-muted-foreground border-t pt-4">
-            Last updated: {format(ticket.updatedAt.toDate(), 'PPpp')}
+            Last updated: {ticket.updatedAt && typeof ticket.updatedAt.toDate === 'function' ? format(ticket.updatedAt.toDate(), 'PPpp') : 'Processing...'}
           </CardFooter>
         </Card>
 
@@ -203,7 +203,11 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
           </CardHeader>
           <CardContent className="space-y-4">
             {ticket.messages.length > 0 ? (
-              ticket.messages.sort((a,b) => a.timestamp.toMillis() - b.timestamp.toMillis()).map((msg) => (
+              ticket.messages.sort((a,b) => {
+                const aTimestamp = a.timestamp && typeof a.timestamp.toMillis === 'function' ? a.timestamp.toMillis() : 0;
+                const bTimestamp = b.timestamp && typeof b.timestamp.toMillis === 'function' ? b.timestamp.toMillis() : 0;
+                return aTimestamp - bTimestamp;
+              }).map((msg) => (
                 <MessageItem key={msg.id} message={msg} currentUserId={currentUserProfile.uid} />
               ))
             ) : (
@@ -270,7 +274,7 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Created At:</span>
-              <span className="font-medium">{format(ticket.createdAt.toDate(), 'MMM d, yyyy')}</span>
+              <span className="font-medium">{ticket.createdAt && typeof ticket.createdAt.toDate === 'function' ? format(ticket.createdAt.toDate(), 'MMM d, yyyy') : 'Processing...'}</span>
             </div>
              <div className="flex justify-between">
               <span className="text-muted-foreground">Assigned To:</span>
@@ -313,6 +317,3 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
     </div>
   );
 }
-
-
-      

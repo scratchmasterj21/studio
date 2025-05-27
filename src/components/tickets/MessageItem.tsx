@@ -1,3 +1,4 @@
+
 import type { TicketMessage } from '@/lib/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
@@ -38,7 +39,7 @@ export default function MessageItem({ message, currentUserId }: MessageItemProps
           <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">{message.message}</p>
         </CardContent>
         <CardFooter className="p-2 pt-1 text-xs opacity-80">
-          {formatDistanceToNowStrict(message.timestamp.toDate())} ago
+          {message.timestamp && typeof message.timestamp.toDate === 'function' ? formatDistanceToNowStrict(message.timestamp.toDate()) + ' ago' : 'Sending...'}
         </CardFooter>
       </Card>
        {isCurrentUser && (
