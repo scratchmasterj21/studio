@@ -24,10 +24,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { createTicket } from "@/lib/firestore";
+import { createTicket, getUserProfile } from "@/lib/firestore";
 import type { TicketCategory, TicketPriority, UserProfile, Attachment } from "@/lib/types";
 import { ticketCategories, ticketPriorities } from "@/config/site";
-import { useRouter } from 'next/navigation'; // Using next/navigation as per previous resolution
+import { useRouter } from 'next/navigation';
 import { useState, useRef } from "react";
 import LoadingSpinner from "../common/LoadingSpinner";
 import { sendEmailViaBrevo } from "@/lib/brevo";
@@ -37,7 +37,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { cn } from "@/lib/utils";
 
 const MAX_FILES = 5;
-const MAX_FILE_SIZE_MB = 25; // Max 25MB per file
+const MAX_FILE_SIZE_MB = 25; 
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
 const ticketFormSchema = z.object({
@@ -55,7 +55,7 @@ interface UploadableFile {
   progress: number;
   status: 'pending' | 'uploading' | 'success' | 'error';
   error?: string;
-  uploadedAttachment?: Attachment; // Stores R2 details on success
+  uploadedAttachment?: Attachment; 
 }
 
 interface TicketFormProps {
@@ -75,7 +75,7 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
       title: "",
       description: "",
       category: ticketCategories[0],
-      priority: ticketPriorities[1], // Default to Medium
+      priority: ticketPriorities[1], 
     },
   });
 
@@ -97,7 +97,7 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
           description: `${file.name} exceeds the ${MAX_FILE_SIZE_MB}MB size limit.`,
           variant: "destructive",
         });
-        return null; // We'll filter this out
+        return null; 
       }
       return {
         id: uuidv4(),
@@ -109,10 +109,8 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
 
     setUploadableFiles(prev => [...prev, ...newUploadableFiles]);
     
-    // Automatically start uploading new files
-    newUploadableFiles.forEach(uf => handleFileUpload(uf.id));
+    newUploadableFiles.forEach(uf => handleFileUpload(uf));
 
-    // Clear the file input for next selection
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -120,45 +118,42 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
 
   const handleRemoveFile = (fileId: string) => {
     setUploadableFiles(prev => prev.filter(f => f.id !== fileId));
-    // If file was uploading, we might want to try and cancel it, but that's complex.
-    // For now, just removing from list. It won't be submitted.
   };
 
-  const handleFileUpload = async (fileId: string) => {
-    const targetIndex = uploadableFiles.findIndex(uf => uf.id === fileId);
-    if (targetIndex === -1) {
-        console.error(`[FileUpload] File with id ${fileId} not found in uploadableFiles.`);
-        return;
-    }
-    
-    const uploadableFile = uploadableFiles[targetIndex];
-    if (!uploadableFile || uploadableFile.status === 'uploading' || uploadableFile.status === 'success') {
-        console.log(`[FileUpload] Skipped upload for ${uploadableFile?.file?.name}: Status is ${uploadableFile?.status}`);
-        return;
-    }
+  const handleFileUpload = async (fileEntry: UploadableFile) => {
+    const { file, id: fileId } = fileEntry;
 
-    const { file } = uploadableFile;
+    // Update status to 'uploading' using functional update
+    // This ensures we're working with the latest state.
+    setUploadableFiles(prevFiles => {
+        const existingFile = prevFiles.find(uf => uf.id === fileId);
+        if (!existingFile || existingFile.status === 'uploading' || existingFile.status === 'success') {
+             console.log(`[FileUpload] Skipped upload for ${file.name}: Status is ${existingFile?.status} or file not found for immediate update.`);
+             return prevFiles; // Don't proceed if already uploading/success or somehow not found for this initial status update
+        }
+        return prevFiles.map(uf =>
+            uf.id === fileId ? { ...uf, status: 'uploading', progress: 0, error: undefined } : uf
+        );
+    });
+    
     console.log(`[FileUpload] Starting upload for: ${file.name}, Type: ${file.type}, Size: ${file.size}`);
 
-    setUploadableFiles(prev => prev.map(uf => uf.id === fileId ? { ...uf, status: 'uploading', progress: 0, error: undefined } : uf));
-
     try {
-      // 1. Get presigned URL
-      const contentType = file.type || 'application/octet-stream'; // Fallback if browser doesn't provide type
+      const contentType = file.type || 'application/octet-stream';
       console.log(`[FileUpload] Fetching presigned URL for ${file.name} with contentType: ${contentType}`);
       const presignedUrlResponse = await fetch(`/api/upload/presigned-url?filename=${encodeURIComponent(file.name)}&contentType=${encodeURIComponent(contentType)}`);
       
       console.log(`[FileUpload] Presigned URL response status for ${file.name}: ${presignedUrlResponse.status}`);
 
       if (!presignedUrlResponse.ok) {
-        const errorText = await presignedUrlResponse.text();
-        console.error(`[FileUpload] Failed to get presigned URL for ${file.name}. Status: ${presignedUrlResponse.status}, Body: ${errorText}`);
-        throw new Error(JSON.parse(errorText).error || `Failed to get presigned URL. Status: ${presignedUrlResponse.status}`);
+        const errorBody = await presignedUrlResponse.text();
+        const parsedError = JSON.parse(errorBody || '{}');
+        console.error(`[FileUpload] Failed to get presigned URL for ${file.name}. Status: ${presignedUrlResponse.status}, Body: ${errorBody}`);
+        throw new Error(parsedError.error || `Failed to get presigned URL. Status: ${presignedUrlResponse.status}`);
       }
-      const { presignedUrl, fileKey, publicUrl, bucket } = await presignedUrlResponse.json();
+      const { presignedUrl, fileKey, publicUrl } = await presignedUrlResponse.json();
       console.log(`[FileUpload] Got presigned URL for ${file.name}: ${presignedUrl}`);
 
-      // 2. Upload file to R2 using PUT
       console.log(`[FileUpload] Starting PUT to R2 for ${file.name} with Content-Type: ${contentType}`);
       const uploadResponse = await fetch(presignedUrl, {
         method: 'PUT',
@@ -214,7 +209,7 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
       const ticketData = {
         ...values,
         createdBy: userProfile.uid,
-        attachments: successfulUploads, // Add attachments here
+        attachments: successfulUploads,
       };
       
       const ticketId = await createTicket(ticketData, userProfile);
@@ -292,8 +287,7 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
     return <FileText className="h-5 w-5 text-muted-foreground" />;
   };
 
-  const isUploading = uploadableFiles.some(f => f.status === 'uploading');
-  const hasPendingUploads = uploadableFiles.some(f => f.status === 'pending' || f.status === 'uploading');
+  const isUploadingAnyFile = uploadableFiles.some(f => f.status === 'uploading');
   const hasUploadErrors = uploadableFiles.some(f => f.status === 'error');
 
 
@@ -337,7 +331,6 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
           )}
         />
 
-        {/* File Upload Section */}
         <FormItem>
           <FormLabel>Attachments (Optional)</FormLabel>
           <FormControl>
@@ -368,7 +361,7 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
            <FormDescription>
              Attach screenshots, videos, or logs to help explain the issue.
            </FormDescription>
-          <FormMessage /> {/* For general file input errors if any */}
+          <FormMessage />
         </FormItem>
         
         {uploadableFiles.length > 0 && (
@@ -401,7 +394,7 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
                       variant="ghost"
                       size="icon"
                       className="h-7 w-7"
-                      onClick={() => handleFileUpload(uf.id)}
+                      onClick={() => handleFileUpload(uf)} // Pass the whole uf object
                       disabled={uf.status === 'uploading'}
                       title="Retry Upload"
                     >
@@ -433,7 +426,7 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Category</FormLabel>
-                <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isSubmittingMainForm || isUploading}>
+                <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isSubmittingMainForm || isUploadingAnyFile}>
                   <FormControl>
                     <SelectTrigger>
                       <SelectValue placeholder="Select a category" />
@@ -457,7 +450,7 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Priority</FormLabel>
-                <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isSubmittingMainForm || isUploading}>
+                <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isSubmittingMainForm || isUploadingAnyFile}>
                   <FormControl>
                     <SelectTrigger>
                       <SelectValue placeholder="Select a priority level" />
@@ -478,11 +471,11 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
         </div>
         <Button 
           type="submit" 
-          disabled={isSubmittingMainForm || isUploading || hasUploadErrors} 
+          disabled={isSubmittingMainForm || isUploadingAnyFile || hasUploadErrors} 
           className="w-full sm:w-auto"
         >
-          {(isSubmittingMainForm || isUploading) && <LoadingSpinner size="sm" className="mr-2" />}
-          {isUploading ? "Uploading files..." : isSubmittingMainForm ? "Submitting..." : "Submit Ticket"}
+          {(isSubmittingMainForm || isUploadingAnyFile) && <LoadingSpinner size="sm" className="mr-2" />}
+          {isUploadingAnyFile ? "Uploading files..." : isSubmittingMainForm ? "Submitting..." : "Submit Ticket"}
         </Button>
         {hasUploadErrors && <p className="text-sm text-destructive">Some files failed to upload. Please remove them or retry.</p>}
       </form>
