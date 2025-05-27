@@ -54,6 +54,20 @@ export const getUserProfile = async (uid: string): Promise<UserProfile | null> =
   return userSnap.exists() ? (userSnap.data() as UserProfile) : null;
 };
 
+export const updateUserRole = async (uid: string, newRole: UserRole): Promise<void> => {
+  const userRef = doc(db, 'users', uid);
+  try {
+    await updateDoc(userRef, {
+      role: newRole,
+      // Optionally, add an updatedAt timestamp here if needed for auditing
+      // updatedAt: serverTimestamp(), 
+    });
+  } catch (error) {
+    console.error(`Error updating role for user ${uid} to ${newRole}:`, error);
+    throw error;
+  }
+};
+
 export const getAllUsersByRole = (role: UserRole, callback: (users: UserProfile[]) => void): Unsubscribe => {
   const usersRef = collection(db, 'users');
   const q = query(usersRef, where('role', '==', role), orderBy('displayName'));
@@ -66,6 +80,20 @@ export const getAllUsersByRole = (role: UserRole, callback: (users: UserProfile[
     callback(users);
   });
 };
+
+export const getAssignableAgents = (callback: (users: UserProfile[]) => void): Unsubscribe => {
+  const usersRef = collection(db, 'users');
+  const q = query(usersRef, where('role', 'in', ['worker', 'admin']), orderBy('displayName'));
+  
+  return onSnapshot(q, (snapshot: QuerySnapshot<DocumentData>) => {
+    const users = snapshot.docs.map(docSnap => ({
+      ...docSnap.data(),
+      uid: docSnap.id,
+    } as UserProfile));
+    callback(users);
+  });
+};
+
 
 export const getAllUsers = (callback: (users: UserProfile[]) => void): Unsubscribe => {
   const usersRef = collection(db, 'users');
@@ -140,10 +168,10 @@ export const onTicketsUpdate = (
   }
   
   // Apply filters if provided (mainly for admin)
-  if (filters?.status && userProfile.role === 'admin') {
+  if (filters?.status && userProfile.role === 'admin' && filters.status !== "all") {
     q = query(q, where('status', '==', filters.status));
   }
-  if (filters?.priority && userProfile.role === 'admin') {
+  if (filters?.priority && userProfile.role === 'admin' && filters.priority !== "all") {
     q = query(q, where('priority', '==', filters.priority));
   }
 
@@ -191,12 +219,4 @@ export const addMessageToTicket = async (ticketId: string, messageData: Omit<Tic
     messages: arrayUnion(newMessage),
     updatedAt: serverTimestamp(),
   });
-};
-
-// Example of how to get users for assignment dropdown (simplified)
-export const getAssignableUsers = async (role: UserRole = 'worker'): Promise<UserProfile[]> => {
-    const usersRef = collection(db, 'users');
-    const q = query(usersRef, where('role', '==', role), orderBy('displayName'));
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(docSnap => docSnap.data() as UserProfile);
 };

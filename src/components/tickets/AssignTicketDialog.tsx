@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState } from 'react';
@@ -21,7 +22,7 @@ import {
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import type { UserProfile } from '@/lib/types';
-import { getAllUsersByRole } from '@/lib/firestore'; // Changed from getAssignableUsers to real-time capable one
+import { getAssignableAgents } from '@/lib/firestore'; 
 import LoadingSpinner from '../common/LoadingSpinner';
 import { Users } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -29,51 +30,49 @@ import { useToast } from '@/hooks/use-toast';
 interface AssignTicketDialogProps {
   ticketId: string;
   currentAssigneeId?: string;
-  onAssign: (workerId: string, workerName: string) => Promise<void>;
+  onAssign: (agentId: string, agentName: string) => Promise<void>;
 }
 
 export default function AssignTicketDialog({ ticketId, currentAssigneeId, onAssign }: AssignTicketDialogProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [workers, setWorkers] = useState<UserProfile[]>([]);
-  const [selectedWorkerId, setSelectedWorkerId] = useState<string | undefined>(currentAssigneeId);
-  const [isLoadingWorkers, setIsLoadingWorkers] = useState(true);
+  const [assignableAgents, setAssignableAgents] = useState<UserProfile[]>([]);
+  const [selectedAgentId, setSelectedAgentId] = useState<string | undefined>(currentAssigneeId);
+  const [isLoadingAgents, setIsLoadingAgents] = useState(true);
   const [isAssigning, setIsAssigning] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
-    if (isOpen) { // Only fetch if dialog is open
-      setIsLoadingWorkers(true);
-      const unsubscribe = getAllUsersByRole('worker', (fetchedWorkers) => {
-        setWorkers(fetchedWorkers);
-        setIsLoadingWorkers(false);
+    if (isOpen) { 
+      setIsLoadingAgents(true);
+      const unsubscribe = getAssignableAgents((fetchedAgents) => {
+        setAssignableAgents(fetchedAgents);
+        setIsLoadingAgents(false);
       });
-      return () => unsubscribe(); // Cleanup subscription when dialog closes or component unmounts
+      return () => unsubscribe(); 
     }
   }, [isOpen]);
   
   useEffect(() => {
-    // Update selected worker if currentAssigneeId changes from props
-    setSelectedWorkerId(currentAssigneeId);
+    setSelectedAgentId(currentAssigneeId);
   }, [currentAssigneeId]);
 
 
   const handleAssign = async () => {
-    if (!selectedWorkerId) {
-      toast({ title: "No Worker Selected", description: "Please select a worker to assign the ticket.", variant: "destructive" });
+    if (!selectedAgentId) {
+      toast({ title: "No Agent Selected", description: "Please select an agent to assign the ticket.", variant: "destructive" });
       return;
     }
-    const selectedWorker = workers.find(w => w.uid === selectedWorkerId);
-    if (!selectedWorker) {
-      toast({ title: "Worker Not Found", description: "Selected worker could not be found.", variant: "destructive" });
+    const selectedAgent = assignableAgents.find(w => w.uid === selectedAgentId);
+    if (!selectedAgent) {
+      toast({ title: "Agent Not Found", description: "Selected agent could not be found.", variant: "destructive" });
       return;
     }
 
     setIsAssigning(true);
     try {
-      await onAssign(selectedWorkerId, selectedWorker.displayName || selectedWorker.email || 'Unknown Worker');
-      setIsOpen(false); // Close dialog on success
+      await onAssign(selectedAgentId, selectedAgent.displayName || selectedAgent.email || 'Unknown Agent');
+      setIsOpen(false); 
     } catch (error) {
-      // Toast for error is handled in the parent component's onAssign typically
       console.error("Assignment failed from dialog:", error);
     } finally {
       setIsAssigning(false);
@@ -92,27 +91,27 @@ export default function AssignTicketDialog({ ticketId, currentAssigneeId, onAssi
         <DialogHeader>
           <DialogTitle>Assign Ticket</DialogTitle>
           <DialogDescription>
-            Select a worker to assign this ticket to. They will be notified.
+            Select an agent (worker or admin) to assign this ticket to. They will be notified.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
           <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="worker-select" className="text-right">
-              Worker
+            <Label htmlFor="agent-select" className="text-right">
+              Agent
             </Label>
-            {isLoadingWorkers ? (
+            {isLoadingAgents ? (
               <div className="col-span-3 flex justify-center"> <LoadingSpinner /></div>
-            ) : workers.length === 0 ? (
-                <p className="col-span-3 text-sm text-muted-foreground">No workers available.</p>
+            ) : assignableAgents.length === 0 ? (
+                <p className="col-span-3 text-sm text-muted-foreground">No agents available.</p>
             ) : (
-              <Select value={selectedWorkerId} onValueChange={setSelectedWorkerId}>
-                <SelectTrigger id="worker-select" className="col-span-3">
-                  <SelectValue placeholder="Select a worker" />
+              <Select value={selectedAgentId} onValueChange={setSelectedAgentId}>
+                <SelectTrigger id="agent-select" className="col-span-3">
+                  <SelectValue placeholder="Select an agent" />
                 </SelectTrigger>
                 <SelectContent>
-                  {workers.map((worker) => (
-                    <SelectItem key={worker.uid} value={worker.uid}>
-                      {worker.displayName} ({worker.email})
+                  {assignableAgents.map((agent) => (
+                    <SelectItem key={agent.uid} value={agent.uid}>
+                      {agent.displayName || agent.email} ({agent.role})
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -124,7 +123,7 @@ export default function AssignTicketDialog({ ticketId, currentAssigneeId, onAssi
           <DialogClose asChild>
             <Button variant="outline" disabled={isAssigning}>Cancel</Button>
           </DialogClose>
-          <Button onClick={handleAssign} disabled={isLoadingWorkers || !selectedWorkerId || isAssigning}>
+          <Button onClick={handleAssign} disabled={isLoadingAgents || !selectedAgentId || isAssigning}>
             {isAssigning ? <LoadingSpinner size="sm" className="mr-2" /> : null}
             Assign
           </Button>
