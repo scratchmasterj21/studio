@@ -21,10 +21,10 @@ import {
 } from "@/components/ui/form";
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { addMessageToTicket, updateTicketStatus, assignTicket, getUserProfile } from '@/lib/firestore';
+import { addMessageToTicket, updateTicketStatus, assignTicket, getUserProfile, deleteTicket } from '@/lib/firestore';
 import TicketStatusBadge from './TicketStatusBadge';
 import TicketPriorityIcon from './TicketPriorityIcon';
-import { MessageSquare, Send, Edit3, Languages, Paperclip, Download, Image as ImageIcon, Video as VideoIcon, FileText, AlertTriangle } from 'lucide-react';
+import { MessageSquare, Send, Edit3, Languages, Paperclip, Download, Image as ImageIcon, Video as VideoIcon, FileText, AlertTriangle, Trash2 } from 'lucide-react';
 import LoadingSpinner from '../common/LoadingSpinner';
 import StatusSelector from './StatusSelector';
 import AssignTicketDialog from './AssignTicketDialog';
@@ -33,6 +33,18 @@ import { sendEmailViaBrevo } from '@/lib/brevo';
 import { translateText, type TranslateTextInput } from '@/ai/flows/translate-text-flow';
 import NextImage from 'next/image';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { useRouter } from 'next/navigation';
 
 
 const messageFormSchema = z.object({
@@ -47,8 +59,10 @@ interface TicketDetailViewProps {
 
 export default function TicketDetailView({ ticket, currentUserProfile }: TicketDetailViewProps) {
   const { toast } = useToast();
+  const router = useRouter();
   const [isSubmittingMessage, setIsSubmittingMessage] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  const [isDeletingTicket, setIsDeletingTicket] = useState(false);
   
   const [translatedDescription, setTranslatedDescription] = useState<string | null>(null);
   const [isTranslatingDescription, setIsTranslatingDescription] = useState(false);
@@ -255,6 +269,20 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
     }
   };
 
+  const handleDeleteTicket = async () => {
+    setIsDeletingTicket(true);
+    try {
+      await deleteTicket(ticket.id);
+      toast({ title: "Ticket Deleted", description: `Ticket "${ticket.title}" has been successfully deleted.` });
+      router.push('/dashboard'); // Redirect to dashboard after deletion
+    } catch (error) {
+      console.error("Error deleting ticket:", error);
+      toast({ title: "Error", description: "Failed to delete ticket. Please try again.", variant: "destructive" });
+      setIsDeletingTicket(false);
+    }
+    // No finally block needed here as redirection should happen on success
+  };
+
   const handleTranslateDescription = async () => {
     if (!ticket.description) return;
 
@@ -293,7 +321,7 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
   if (isTranslatingDescription) {
     translateDescriptionButtonText = "Translating...";
   } else if (showOriginalDescription) {
-    const isLikelyJapanese = /[\u3000-\u303f\u3040-\u309f\u30a0-\u30ff\uff00-\uff9f\u4e00-\u9faf\u3400-\u4dbf]/.test(ticket.description);
+    const isLikelyJapanese = /[\u3000-\u303f\u3040-\u309f\u30a0-\u30ff\uff00-\uff9f\u4e00-\u9faf\u3400-\u4dbf]/.test(ticket.description || "");
     translateDescriptionButtonText = isLikelyJapanese ? "To English" : "To Japanese";
   } else {
     translateDescriptionButtonText = "Show Original";
@@ -327,7 +355,7 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
         <Card className="shadow-lg">
           <CardHeader>
             <div className="flex justify-between items-start">
-              <CardTitle className="text-2xl font-bold">{ticket.title}</CardTitle>
+              <CardTitle className="text-2xl font-bold">{ticket.title || "Untitled Ticket"}</CardTitle>
               <TicketStatusBadge status={ticket.status} className="text-sm px-3 py-1"/>
             </div>
             <CardDescription className="text-sm text-muted-foreground">
@@ -337,7 +365,7 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
           <CardContent>
             <div className="flex flex-col">
               <Label className="text-xs text-muted-foreground mb-1">Description</Label>
-              <p className="whitespace-pre-wrap text-foreground leading-relaxed flex-grow">{displayedDescriptionText}</p>
+              <p className="whitespace-pre-wrap text-foreground leading-relaxed flex-grow">{displayedDescriptionText || "No description provided."}</p>
               {ticket.description && (
                 <div className="mt-2 self-start">
                   <Button
@@ -357,34 +385,32 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
             </div>
             <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm">
               <div className="flex items-center">
-                <Badge variant="outline" className="mr-2">{ticket.category}</Badge>
+                <Badge variant="outline" className="mr-2">{ticket.category || "N/A"}</Badge>
                  Category
               </div>
               <div className="flex items-center">
                 <TicketPriorityIcon priority={ticket.priority} className="mr-1.5" />
-                {ticket.priority} Priority
+                {ticket.priority || "N/A"} Priority
               </div>
             </div>
 
-            {/* Attachments Section */}
+            {attachmentLoadErrorOccurred && (
+              <Alert variant="destructive" className="mt-4">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>Attachment Loading Error</AlertTitle>
+                <AlertDescription>
+                  One or more attachments could not be loaded. This often means the files in Cloudflare R2 are not publicly readable, or there's a CORS issue.
+                  An "Invalid Argument Authorization" error when accessing the file URL directly points to R2 object permissions.
+                  Please ensure objects in your R2 bucket (especially under 'uploads/') are set to **publicly readable** and that your R2 bucket's CORS policy allows GET requests from this application's origin.
+                </AlertDescription>
+              </Alert>
+            )}
             {ticket.attachments && ticket.attachments.length > 0 && (
               <div className="mt-6 pt-4 border-t">
                 <h3 className="text-md font-semibold mb-3 flex items-center">
                   <Paperclip className="h-5 w-5 mr-2 text-muted-foreground" />
                   Attachments ({ticket.attachments.length})
                 </h3>
-                 {attachmentLoadErrorOccurred && (
-                  <Alert variant="destructive" className="mb-4">
-                    <AlertTriangle className="h-4 w-4" />
-                    <AlertTitle>Attachment Loading Error</AlertTitle>
-                    <AlertDescription>
-                      One or more attachments could not be loaded. This often means the files in Cloudflare R2 are not publicly readable.
-                      An "Invalid Argument Authorization" error when accessing the file URL directly points to this.
-                      Please ensure objects in your R2 bucket (especially under 'uploads/') are set to **publicly readable** in your Cloudflare R2 settings.
-                      Also verify your R2 bucket's CORS policy allows GET requests from this application's origin.
-                    </AlertDescription>
-                  </Alert>
-                )}
                 <div className="space-y-3">
                   {ticket.attachments.map((att) => (
                     <Card key={att.id} className="p-3 shadow-sm bg-muted/30">
@@ -425,7 +451,7 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
                             onError={(e) => {
                               setAttachmentLoadErrorOccurred(true);
                               const errorTarget = e.target as HTMLImageElement;
-                              console.error(`[TicketDetailView] Failed to load image: ${att.url}. Natural width: ${errorTarget.naturalWidth}. Error:`, errorTarget.error || 'Unknown image error');
+                              console.error(`[TicketDetailView] Failed to load image: ${att.url}. Natural width: ${errorTarget.naturalWidth}. Error:`, 'Unknown image error');
                               toast({
                                 title: "Image Load Error",
                                 description: `Could not load image: ${att.name}. An "Invalid Argument Authorization" error for the URL typically means the R2 object is private. Please check R2 permissions and ensure objects are publicly readable.`,
@@ -453,7 +479,7 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
                               let toastDescription = `Could not load video: ${att.name}. The URL might be invalid or the object in R2 is not publicly readable.`;
                               if (errorCode === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) { // Code 4
                                 toastDescription = `Video format or codec for "${att.name}" is not supported by your browser, or the file might be corrupted. Please try a different video format (e.g., common MP4 H.264). Also ensure the object is publicly readable in R2.`;
-                              } else if (errorMessage.toLowerCase().includes("authorization") || (errorTarget.error && !errorCode)) { // Some browsers might not set a code for auth errors on video
+                              } else if (errorMessage.toLowerCase().includes("authorization") || (errorTarget.error && !errorCode)) { 
                                 toastDescription = `Could not load video: ${att.name}. This often indicates an "Invalid Argument Authorization" or similar access error, meaning the R2 object is private. Please check R2 permissions and ensure objects are publicly readable.`;
                               } else {
                                 toastDescription += ` Browser error: ${errorMessage} (Code: ${errorCode}). Also ensure the object is publicly readable in R2.`;
@@ -472,7 +498,7 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
                     </Card>
                   ))}
                 </div>
-                 {!attachmentLoadErrorOccurred && (
+                 {!attachmentLoadErrorOccurred && ticket.attachments && ticket.attachments.length > 0 && (
                     <div className="mt-3 text-xs text-muted-foreground flex items-start gap-1.5 p-2 border border-dashed rounded-md">
                         <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
                         <span>
@@ -487,7 +513,7 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
 
           </CardContent>
           <CardFooter className="text-xs text-muted-foreground border-t pt-4">
-             Last updated: {ticket.updatedAt && typeof ticket.updatedAt.toDate === 'function' ? format(ticket.updatedAt.toDate(), 'PPpp') : 'Processing...'}
+             Last updated: {lastUpdatedText}
           </CardFooter>
         </Card>
 
@@ -496,7 +522,7 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
             <CardTitle className="text-xl flex items-center"><MessageSquare className="mr-2 h-5 w-5" /> Communication History</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {ticket.messages.length > 0 ? (
+            {ticket.messages && ticket.messages.length > 0 ? (
               ticket.messages.sort((a,b) => {
                 const aTimestamp = a.timestamp && typeof a.timestamp.toMillis === 'function' ? a.timestamp.toMillis() : 0;
                 const bTimestamp = b.timestamp && typeof b.timestamp.toMillis === 'function' ? b.timestamp.toMillis() : 0;
@@ -555,12 +581,12 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
             <div className="flex justify-between items-center">
               <span className="text-sm text-muted-foreground">Priority:</span>
               <span className="font-medium flex items-center">
-                <TicketPriorityIcon priority={ticket.priority} className="mr-1.5" />{ticket.priority}
+                <TicketPriorityIcon priority={ticket.priority} className="mr-1.5" />{ticket.priority || "N/A"}
               </span>
             </div>
             <div className="flex justify-between items-center">
               <span className="text-sm text-muted-foreground">Category:</span>
-              <span className="font-medium">{ticket.category}</span>
+              <span className="font-medium">{ticket.category || "N/A"}</span>
             </div>
             <div className="flex justify-between items-center">
               <span className="text-sm text-muted-foreground">Created By:</span>
@@ -606,16 +632,45 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
             </CardContent>
           </Card>
         )}
+
+        {currentUserProfile.role === 'admin' && (
+          <Card className="shadow-md">
+            <CardHeader>
+              <CardTitle className="text-lg text-destructive">Admin Actions</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="destructive" className="w-full" disabled={isDeletingTicket}>
+                    {isDeletingTicket ? <LoadingSpinner size="sm" className="mr-2" /> : <Trash2 className="mr-2 h-4 w-4" />}
+                    Delete Ticket
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This action cannot be undone. This will permanently delete the ticket
+                      titled "{ticket.title || "this ticket"}" and all of its associated data, including messages and attachments.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel disabled={isDeletingTicket}>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={handleDeleteTicket}
+                      disabled={isDeletingTicket}
+                      className="bg-destructive hover:bg-destructive/90"
+                    >
+                      {isDeletingTicket ? <LoadingSpinner size="sm" className="mr-2" /> : null}
+                      Yes, delete ticket
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );
 }
-    
-
-    
-
-    
-
-    
-
-    

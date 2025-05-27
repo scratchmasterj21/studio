@@ -15,14 +15,19 @@ import {
   Timestamp,
   arrayUnion,
   onSnapshot,
-  Unsubscribe,
-  DocumentData,
-  QuerySnapshot,
-  DocumentSnapshot,
+  type Unsubscribe,
+  type DocumentData,
+  type QuerySnapshot,
+  type DocumentSnapshot,
 } from 'firebase/firestore';
 import { db } from './firebase';
-import type { Ticket, TicketMessage, TicketStatus, UserProfile, UserRole, Attachment } from './types'; // Added Attachment
+import type { Ticket, TicketMessage, TicketStatus, UserProfile, UserRole, Attachment } from './types';
 import { ticketStatuses } from '@/config/site';
+
+// --- Default Worker Configuration ---
+// IMPORTANT: Replace these placeholder values with the actual UID and display name of your default support agent.
+const DEFAULT_WORKER_UID = "REPLACE_WITH_DEFAULT_WORKER_UID";
+const DEFAULT_WORKER_NAME = "Default Support Agent"; // Or the actual name
 
 // User Profile Functions
 export const createUserProfile = async (userAuth: any, additionalData = {}): Promise<void> => {
@@ -69,19 +74,6 @@ export const updateUserRole = async (uid: string, newRole: UserRole): Promise<vo
   }
 };
 
-export const getAllUsersByRole = (role: UserRole, callback: (users: UserProfile[]) => void): Unsubscribe => {
-  const usersRef = collection(db, 'users');
-  const q = query(usersRef, where('role', '==', role), orderBy('displayName'));
-
-  return onSnapshot(q, (snapshot: QuerySnapshot<DocumentData>) => {
-    const users = snapshot.docs.map(docSnap => ({
-      ...docSnap.data(),
-      uid: docSnap.id, 
-    } as UserProfile));
-    callback(users);
-  });
-};
-
 export const getAssignableAgents = (callback: (users: UserProfile[]) => void): Unsubscribe => {
   const usersRef = collection(db, 'users');
   const q = query(usersRef, where('role', 'in', ['worker', 'admin']), orderBy('displayName'));
@@ -107,7 +99,7 @@ export const getAllUsers = (callback: (users: UserProfile[]) => void): Unsubscri
       if (createdAtTimestamp && typeof createdAtTimestamp.toDate !== 'function' && createdAtTimestamp.seconds) {
         createdAtTimestamp = new Timestamp(createdAtTimestamp.seconds, createdAtTimestamp.nanoseconds);
       } else if (!createdAtTimestamp) {
-        createdAtTimestamp = Timestamp.now();
+        createdAtTimestamp = Timestamp.now(); // Fallback if createdAt is missing
       }
 
       return {
@@ -123,39 +115,60 @@ export const getAllUsers = (callback: (users: UserProfile[]) => void): Unsubscri
 
 // Ticket Functions
 export const createTicket = async (
-  ticketData: Omit<Ticket, 'id' | 'createdAt' | 'updatedAt' | 'messages' | 'createdByName'> & { attachments?: Attachment[] }, 
+  ticketData: Omit<Ticket, 'id' | 'createdAt' | 'updatedAt' | 'messages' | 'createdByName' | 'status' | 'assignedTo' | 'assignedToName'> & { attachments?: Attachment[] },
   createdByProfile: UserProfile
 ): Promise<string> => {
   const ticketsRef = collection(db, 'tickets');
+  
+  let assignedTo: string | undefined = undefined;
+  let assignedToName: string | undefined = undefined;
+  let status: TicketStatus = 'Open';
+
+  if (DEFAULT_WORKER_UID && DEFAULT_WORKER_UID !== "REPLACE_WITH_DEFAULT_WORKER_UID") {
+    assignedTo = DEFAULT_WORKER_UID;
+    assignedToName = DEFAULT_WORKER_NAME;
+    status = 'In Progress'; // Set to In Progress if assigned
+  }
+
   const newTicket = {
     title: ticketData.title,
     description: ticketData.description,
     category: ticketData.category,
     priority: ticketData.priority,
-    status: 'Open' as TicketStatus,
+    status: status,
     createdBy: createdByProfile.uid,
     createdByName: createdByProfile.displayName || createdByProfile.email || 'Unknown User',
+    assignedTo: assignedTo,
+    assignedToName: assignedToName,
     createdAt: serverTimestamp() as Timestamp,
     updatedAt: serverTimestamp() as Timestamp,
     messages: [],
-    attachments: ticketData.attachments || [], // Store attachments
+    attachments: ticketData.attachments || [],
   };
   const docRef = await addDoc(ticketsRef, newTicket);
   return docRef.id;
 };
 
 const mapDocToTicket = (docSnap: DocumentSnapshot<DocumentData>): Ticket => {
-  const data = docSnap.data() as any;
+  const data = docSnap.data() as any; // Cast to any to handle potential undefined fields gracefully
   return {
-    ...data,
     id: docSnap.id,
-    createdAt: data.createdAt,
+    title: data.title || '',
+    description: data.description || '',
+    status: data.status || 'Open',
+    priority: data.priority || 'Medium',
+    category: data.category || 'Other',
+    createdBy: data.createdBy || '',
+    createdByName: data.createdByName || 'Unknown User',
+    assignedTo: data.assignedTo,
+    assignedToName: data.assignedToName,
+    createdAt: data.createdAt, // Assume these are Timestamps or handled by onSnapshot
     updatedAt: data.updatedAt,
     messages: data.messages?.map((msg: any) => ({
         ...msg,
         timestamp: msg.timestamp && typeof msg.timestamp.toDate === 'function' ? msg.timestamp : (msg.timestamp && msg.timestamp.seconds ? new Timestamp(msg.timestamp.seconds, msg.timestamp.nanoseconds) : Timestamp.now())
     })) || [],
-    attachments: data.attachments || [], // Ensure attachments are mapped
+    attachments: data.attachments || [],
   } as Ticket;
 };
 
@@ -220,7 +233,7 @@ export const addMessageToTicket = async (ticketId: string, messageData: Omit<Tic
     ...messageData,
     id: doc(collection(db, 'tmp')).id, 
     senderDisplayName: senderProfile.displayName || senderProfile.email || 'Unknown User',
-    timestamp: Timestamp.now(), // Use client-side timestamp for arrayUnion consistency
+    timestamp: Timestamp.now(),
   };
   await updateDoc(ticketRef, {
     messages: arrayUnion(newMessage),
@@ -228,4 +241,7 @@ export const addMessageToTicket = async (ticketId: string, messageData: Omit<Tic
   });
 };
 
-// Removed onTicketStatsUpdate function as per previous request
+export const deleteTicket = async (ticketId: string): Promise<void> => {
+  const ticketRef = doc(db, 'tickets', ticketId);
+  await deleteDoc(ticketRef);
+};

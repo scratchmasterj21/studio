@@ -24,10 +24,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { createTicket } from "@/lib/firestore"; // getUserProfile removed as it's not used here directly
-import type { TicketCategory, TicketPriority, UserProfile, Attachment } from "@/lib/types";
+import { createTicket, getUserProfile } from "@/lib/firestore";
+import type { TicketCategory, TicketPriority, UserProfile, Attachment, TicketStatus } from "@/lib/types";
 import { ticketCategories, ticketPriorities } from "@/config/site";
-import { useRouter } from 'next/navigation'; // Using next/navigation as per previous fixes
+import { useRouter } from 'next/navigation';
 import { useState, useRef } from "react";
 import LoadingSpinner from "../common/LoadingSpinner";
 import { sendEmailViaBrevo } from "@/lib/brevo";
@@ -61,6 +61,10 @@ interface UploadableFile {
 interface TicketFormProps {
   userProfile: UserProfile;
 }
+
+// IMPORTANT: Replace these placeholder values in src/lib/firestore.ts with the actual UID and display name of your default support agent.
+const DEFAULT_WORKER_UID = "REPLACE_WITH_DEFAULT_WORKER_UID"; 
+// const DEFAULT_WORKER_NAME = "Default Support Agent"; // This is defined in firestore.ts
 
 export default function TicketForm({ userProfile }: TicketFormProps) {
   const { toast } = useToast();
@@ -123,14 +127,11 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
   const handleFileUpload = async (fileEntry: UploadableFile) => {
     const { file, id: fileId } = fileEntry;
 
-    // Update status to 'uploading' and clear previous errors for this file entry.
-    // This ensures we work with the latest state for checking current status.
     setUploadableFiles(prevFiles => {
-        const currentFileState = prevFiles.find(uf => uf.id === fileId);
-        // Only proceed if the file is not already uploading or successfully uploaded.
-        if (currentFileState && (currentFileState.status === 'uploading' || currentFileState.status === 'success')) {
-            console.log(`[FileUpload] Skipped upload for ${file.name}: Status is ${currentFileState.status}.`);
-            return prevFiles;
+        const currentFileInState = prevFiles.find(uf => uf.id === fileId);
+        if (currentFileInState && (currentFileInState.status === 'uploading' || currentFileInState.status === 'success')) {
+            console.log(`[FileUpload] Skipped upload for ${file.name}: Status is ${currentFileInState.status}.`);
+            return prevFiles; // Do not modify state if already uploading or success
         }
         return prevFiles.map(uf =>
             uf.id === fileId ? { ...uf, status: 'uploading', progress: 0, error: undefined } : uf
@@ -215,19 +216,22 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
       .map(uf => uf.uploadedAttachment!);
 
     try {
-      const ticketData = {
-        ...values,
-        createdBy: userProfile.uid,
+      const ticketDataForCreation = {
+        title: values.title,
+        description: values.description,
+        category: values.category,
+        priority: values.priority,
         attachments: successfulUploads,
       };
       
-      const ticketId = await createTicket(ticketData, userProfile);
+      const ticketId = await createTicket(ticketDataForCreation, userProfile);
       toast({
         title: "Ticket Created!",
         description: `Your ticket "${values.title}" has been submitted.`,
       });
 
       const ticketLink = `${typeof window !== 'undefined' ? window.location.origin : ''}/dashboard/tickets/${ticketId}`;
+      const shortTicketId = ticketId.substring(0,8);
       const standardFooter = `
         <p style="font-size: 0.9em; color: #555555; margin-top: 20px; border-top: 1px solid #eeeeee; padding-top: 10px;">
           This is an automated notification from FireDesk. Please do not reply directly to this email unless instructed.
@@ -236,18 +240,20 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
         </p>
       `;
 
+      // Notify ticket creator
       if (userProfile.email) {
          await sendEmailViaBrevo({
            to: [{ email: userProfile.email, name: userProfile.displayName || userProfile.email }],
-           subject: `FireDesk Ticket Created: ${values.title} (#${ticketId.substring(0,8)})`,
+           subject: `FireDesk Ticket Created: ${values.title} (#${shortTicketId})`,
            htmlContent: `
              <h1>Ticket Created: ${values.title}</h1>
              <p>Dear ${userProfile.displayName || 'User'},</p>
-             <p>Your support ticket has been successfully created with ID: <strong>#${ticketId.substring(0,8)}</strong>.</p>
+             <p>Your support ticket has been successfully created with ID: <strong>#${shortTicketId}</strong>.</p>
              <p><strong>Title:</strong> ${values.title}</p>
              <p><strong>Description:</strong> ${values.description.replace(/\n/g, '<br>')}</p>
              <p><strong>Category:</strong> ${values.category}</p>
              <p><strong>Priority:</strong> ${values.priority}</p>
+             <p>It has been automatically assigned and is now In Progress.</p>
              ${successfulUploads.length > 0 ? `<p><strong>Attachments:</strong> ${successfulUploads.map(att => att.name).join(', ')}</p>` : ''}
              <p>We will get back to you as soon as possible.</p>
              ${standardFooter}
@@ -255,15 +261,16 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
          });
       }
       
+      // Notify Admin
       const adminEmail = process.env.NEXT_PUBLIC_ADMIN_EMAIL_NOTIFICATIONS;
       if (adminEmail) {
         await sendEmailViaBrevo({
           to: [{ email: adminEmail }],
-          subject: `New FireDesk Ticket: ${values.title} by ${userProfile.displayName || userProfile.email} (#${ticketId.substring(0,8)})`,
+          subject: `New FireDesk Ticket (Assigned): ${values.title} by ${userProfile.displayName || userProfile.email} (#${shortTicketId})`,
           htmlContent: `
-            <h1>New Ticket Submission</h1>
+            <h1>New Ticket Submission - Automatically Assigned</h1>
             <p>A new support ticket has been created by <strong>${userProfile.displayName || userProfile.email}</strong> (User ID: ${userProfile.uid}).</p>
-            <p><strong>Ticket ID:</strong> #${ticketId.substring(0,8)}</p>
+            <p><strong>Ticket ID:</strong> #${shortTicketId}</p>
             <p><strong>Title:</strong> ${values.title}</p>
             <p><strong>Description:</strong></p>
             <div style="padding: 10px; border-left: 3px solid #eee; margin: 10px 0;">
@@ -271,11 +278,38 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
             </div>
             <p><strong>Category:</strong> ${values.category}</p>
             <p><strong>Priority:</strong> ${values.priority}</p>
+            <p><strong>This ticket has been automatically assigned to the default agent and set to 'In Progress'.</strong></p>
             ${successfulUploads.length > 0 ? `<p><strong>Attachments:</strong> ${successfulUploads.map(att => `<a href="${att.url}">${att.name}</a>`).join(', ')}</p>` : ''}
             ${standardFooter}
           `,
         });
       }
+
+      // Notify Default Worker if assigned
+      if (DEFAULT_WORKER_UID && DEFAULT_WORKER_UID !== "REPLACE_WITH_DEFAULT_WORKER_UID") {
+        const workerProfile = await getUserProfile(DEFAULT_WORKER_UID);
+        if (workerProfile?.email && workerProfile.email !== userProfile.email && workerProfile.email !== adminEmail) { // Avoid duplicate emails
+            await sendEmailViaBrevo({
+                to: [{ email: workerProfile.email, name: workerProfile.displayName || "Default Agent" }],
+                subject: `New Ticket Assigned to You: ${values.title} (#${shortTicketId})`,
+                htmlContent: `
+                    <p>Hello ${workerProfile.displayName || "Default Agent"},</p>
+                    <p>A new ticket has been created and automatically assigned to you:</p>
+                    <p><strong>Ticket ID:</strong> #${shortTicketId}</p>
+                    <p><strong>Title:</strong> ${values.title}</p>
+                    <p><strong>Created By:</strong> ${userProfile.displayName || userProfile.email}</p>
+                    <p><strong>Description:</strong></p>
+                    <div style="padding: 10px; border-left: 3px solid #eee; margin: 10px 0;">
+                        <p style="margin:0;">${values.description.replace(/\n/g, '<br>')}</p>
+                    </div>
+                    <p>The ticket status is 'In Progress'. Please review and take action.</p>
+                    ${successfulUploads.length > 0 ? `<p><strong>Attachments:</strong> ${successfulUploads.map(att => `<a href="${att.url}">${att.name}</a>`).join(', ')}</p>` : ''}
+                    ${standardFooter}
+                `,
+            });
+        }
+      }
+
 
       router.push(`/dashboard/tickets/${ticketId}`);
     } catch (error) {
@@ -491,4 +525,3 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
     </Form>
   );
 }
-
