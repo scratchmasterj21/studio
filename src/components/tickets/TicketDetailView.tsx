@@ -52,7 +52,13 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
     defaultValues: { message: "" },
   });
 
-  const getTicketLink = () => `${typeof window !== 'undefined' ? window.location.origin : ''}/dashboard/tickets/${ticket.id}`;
+  const getTicketLink = () => {
+    if (typeof window !== 'undefined') {
+      return `${window.location.origin}/dashboard/tickets/${ticket.id}`;
+    }
+    // Fallback for server-side or if window is not available
+    return `/dashboard/tickets/${ticket.id}`;
+  };
   
   const getStandardFooter = () => `
     <p style="font-size: 0.9em; color: #555555; margin-top: 20px; border-top: 1px solid #eeeeee; padding-top: 10px;">
@@ -74,27 +80,34 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
       messageForm.reset();
       toast({ title: "Message Sent", description: "Your reply has been added to the ticket." });
 
-      // Email Notification Logic
+      // Email Notification Logic for new message
       let recipients: { email: string, name?: string }[] = [];
       
-      if (ticket.createdBy !== currentUserProfile.uid && ticket.createdByName) { 
+      // Notify ticket creator if they aren't the one sending the message
+      if (ticket.createdBy !== currentUserProfile.uid) { 
         const creatorProfile = await getUserProfile(ticket.createdBy); 
-        if (creatorProfile?.email) recipients.push({ email: creatorProfile.email, name: creatorProfile.displayName || ticket.createdByName });
+        if (creatorProfile?.email) {
+          recipients.push({ email: creatorProfile.email, name: creatorProfile.displayName || ticket.createdByName || 'User' });
+        }
       }
-      if (ticket.assignedTo && ticket.assignedTo !== currentUserProfile.uid && ticket.assignedToName) {
+      // Notify assigned worker if they exist and aren't the one sending the message
+      if (ticket.assignedTo && ticket.assignedTo !== currentUserProfile.uid) {
         const workerProfile = await getUserProfile(ticket.assignedTo); 
-        if (workerProfile?.email) recipients.push({ email: workerProfile.email, name: workerProfile.displayName || ticket.assignedToName });
+        if (workerProfile?.email) {
+          recipients.push({ email: workerProfile.email, name: workerProfile.displayName || ticket.assignedToName || 'Agent' });
+        }
       }
+      // Remove duplicates (e.g., if creator is also assigned worker and not the sender)
       recipients = recipients.filter((r, index, self) =>
         index === self.findIndex((t) => t.email === r.email && r.email != null)
       );
       
       if (recipients.length > 0) {
-         await sendEmailViaBrevo({
+         const emailSent = await sendEmailViaBrevo({
            to: recipients,
-           subject: `New Reply on FireDesk Ticket: ${ticket.title} (#${ticket.id})`,
+           subject: `New Reply on FireDesk Ticket: ${ticket.title} (#${ticket.id.substring(0,8)})`,
            htmlContent: `
-             <p>A new reply has been added to FireDesk ticket <strong>${ticket.title}</strong> (#${ticket.id}) by <strong>${currentUserProfile.displayName || currentUserProfile.email} (${currentUserProfile.role})</strong>.</p>
+             <p>A new reply has been added to FireDesk ticket <strong>${ticket.title}</strong> (#${ticket.id.substring(0,8)}) by <strong>${currentUserProfile.displayName || currentUserProfile.email} (${currentUserProfile.role})</strong>.</p>
              <p><strong>Message:</strong></p>
              <div style="padding: 10px; border-left: 3px solid #eee; margin: 10px 0; background-color: #f9f9f9;">
                <p style="margin:0;">${values.message.replace(/\n/g, '<br>')}</p>
@@ -103,6 +116,9 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
              ${getStandardFooter()}
            `,
          });
+         if(!emailSent.success){
+            console.warn("Failed to send 'new reply' email notification(s):", emailSent.message);
+         }
       }
 
     } catch (error) {
@@ -123,41 +139,58 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
       let emailSubject = '';
       let emailHtmlContent = '';
       const ticketCreatorName = ticket.createdByName || 'User';
+      const shortTicketId = ticket.id.substring(0,8);
 
       if (newStatus === 'Resolved') {
-        emailSubject = `Update: Your FireDesk Ticket '${ticket.title}' (#${ticket.id}) Has Been Resolved`;
+        emailSubject = `Update: Your FireDesk Ticket '${ticket.title}' (#${shortTicketId}) Has Been Resolved`;
         emailHtmlContent = `
           <p>Dear ${ticketCreatorName},</p>
-          <p>We've marked your ticket <strong>${ticket.title}</strong> (#${ticket.id}) as <strong>Resolved</strong>.</p>
+          <p>We've marked your ticket <strong>${ticket.title}</strong> (#${shortTicketId}) as <strong>Resolved</strong>.</p>
           <p>If you feel the issue isn't fully addressed, please reply to the ticket by visiting the link below. Otherwise, no further action is needed from your side.</p>
           ${getStandardFooter()}
         `;
       } else if (newStatus === 'Closed') {
-        emailSubject = `Your FireDesk Ticket '${ticket.title}' (#${ticket.id}) Has Been Closed`;
+        emailSubject = `Your FireDesk Ticket '${ticket.title}' (#${shortTicketId}) Has Been Closed`;
         emailHtmlContent = `
           <p>Dear ${ticketCreatorName},</p>
-          <p>Your ticket <strong>${ticket.title}</strong> (#${ticket.id}) has been <strong>Closed</strong>.</p>
+          <p>Your ticket <strong>${ticket.title}</strong> (#${shortTicketId}) has been <strong>Closed</strong>.</p>
           <p>We hope your issue was resolved to your satisfaction. If you have any further questions, please feel free to submit a new ticket.</p>
           ${getStandardFooter()}
         `;
-      } else {
-        emailSubject = `FireDesk Ticket Status Updated: ${ticket.title} (#${ticket.id}) to ${newStatus}`;
+      } else { // For other statuses like Open, In Progress
+        emailSubject = `FireDesk Ticket Status Updated: ${ticket.title} (#${shortTicketId}) to ${newStatus}`;
         emailHtmlContent = `
           <p>Dear ${ticketCreatorName},</p>
-          <p>The status of your ticket <strong>${ticket.title}</strong> (#${ticket.id}) has been updated to <strong>${newStatus}</strong>.</p>
+          <p>The status of your ticket <strong>${ticket.title}</strong> (#${shortTicketId}) has been updated to <strong>${newStatus}</strong>.</p>
           ${getStandardFooter()}
         `;
       }
 
+      // Send email to the ticket creator if they are not the one making the change.
       if (ticket.createdBy !== currentUserProfile.uid) {
+        console.log(`[EmailDebug] Attempting to send status update email for ticket ${ticket.id}. New status: ${newStatus}. Creator: ${ticket.createdBy}. Current user (actor): ${currentUserProfile.uid}. Actor is NOT creator.`);
         const creatorProfile = await getUserProfile(ticket.createdBy);
         if (creatorProfile?.email) {
-          await sendEmailViaBrevo({
-            to: [{ email: creatorProfile.email, name: creatorProfile.displayName || ticket.createdByName }],
+          console.log(`[EmailDebug] Found creator profile for ${ticket.createdBy} with email ${creatorProfile.email}. Proceeding to send status update email.`);
+          const emailResult = await sendEmailViaBrevo({
+            to: [{ email: creatorProfile.email, name: creatorProfile.displayName || ticket.createdByName || 'User' }],
             subject: emailSubject,
             htmlContent: emailHtmlContent,
           });
+          if (!emailResult.success) {
+            console.warn(`[EmailDebug] Brevo reported an issue sending status update email for ticket ${ticket.id} to creator ${creatorProfile.email}: ${emailResult.message}`, emailResult.error);
+          } else {
+            console.log(`[EmailDebug] Status update email for ticket ${ticket.id} to creator ${creatorProfile.email} successfully dispatched via Brevo.`);
+          }
+        } else {
+          if (!creatorProfile) {
+            console.warn(`[EmailDebug] Could not send status update email for ticket ${ticket.id}: Creator profile not found for UID ${ticket.createdBy}. Email not sent.`);
+          } else {
+            console.warn(`[EmailDebug] Could not send status update email for ticket ${ticket.id}: Creator profile for UID ${ticket.createdBy} found, but no email address. Email not sent.`);
+          }
         }
+      } else {
+        console.log(`[EmailDebug] Status update email for ticket ${ticket.id} (new status: ${newStatus}) not sent to creator because current user ${currentUserProfile.uid} IS the creator.`);
       }
 
     } catch (error) {
@@ -172,30 +205,33 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
     try {
       await assignTicket(ticket.id, workerId, workerName);
       toast({ title: "Ticket Assigned", description: `Ticket assigned to ${workerName}.` });
+      const shortTicketId = ticket.id.substring(0,8);
 
       // Email Notification Logic for assignment
+      // Notify the assigned worker
       const workerProfile = await getUserProfile(workerId);
       if (workerProfile?.email) {
         await sendEmailViaBrevo({
           to: [{ email: workerProfile.email, name: workerProfile.displayName || workerName }],
-          subject: `New Ticket Assignment: ${ticket.title} (#${ticket.id})`,
+          subject: `New Ticket Assignment: ${ticket.title} (#${shortTicketId})`,
           htmlContent: `
             <p>Hello ${workerProfile.displayName || workerName},</p>
-            <p>You have been assigned a new ticket: <strong>${ticket.title}</strong> (#${ticket.id}).</p>
+            <p>You have been assigned a new ticket: <strong>${ticket.title}</strong> (#${shortTicketId}).</p>
             <p>Please review the ticket details and take appropriate action.</p>
             ${getStandardFooter()}
           `,
         });
       }
-       if (ticket.createdBy !== currentUserProfile.uid && ticket.createdByName) {
+      // Notify the ticket creator about the assignment, if they are not the one assigning
+       if (ticket.createdBy !== currentUserProfile.uid) {
         const creatorProfile = await getUserProfile(ticket.createdBy);
         if (creatorProfile?.email) {
           await sendEmailViaBrevo({
-            to: [{ email: creatorProfile.email, name: creatorProfile.displayName || ticket.createdByName }],
-            subject: `FireDesk Ticket Assigned: ${ticket.title} (#${ticket.id}) to ${workerName}`,
+            to: [{ email: creatorProfile.email, name: creatorProfile.displayName || ticket.createdByName || 'User' }],
+            subject: `FireDesk Ticket Assigned: ${ticket.title} (#${shortTicketId}) to ${workerName}`,
             htmlContent: `
-              <p>Dear ${creatorProfile.displayName || ticket.createdByName},</p>
-              <p>Your ticket <strong>${ticket.title}</strong> (#${ticket.id}) has been assigned to <strong>${workerName}</strong>.</p>
+              <p>Dear ${creatorProfile.displayName || ticket.createdByName || 'User'},</p>
+              <p>Your ticket <strong>${ticket.title}</strong> (#${shortTicketId}) has been assigned to <strong>${workerName}</strong>.</p>
               <p>They will be looking into your issue shortly.</p>
               ${getStandardFooter()}
             `,
@@ -360,3 +396,4 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
     </div>
   );
 }
+    
