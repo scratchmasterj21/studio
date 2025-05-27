@@ -19,19 +19,27 @@ export type TicketCategory = 'Bug Report' | 'Feature Request' | 'General Inquiry
 export interface TicketMessage {
   id: string;
   senderId: string;
-  senderDisplayName: string; // Added for easier display
+  senderDisplayName: string;
   senderRole: UserRole;
   message: string;
   timestamp: Timestamp;
 }
 
 export interface Attachment {
-  id: string; // A unique ID for the attachment, e.g., uuid
+  id: string;
   name: string;
-  url: string; // Publicly accessible URL from R2
-  type: string; // MIME type
-  size: number; // Size in bytes
-  fileKey: string; // Key in the R2 bucket
+  url: string;
+  type: string;
+  size: number;
+  fileKey: string;
+}
+
+export interface Solution {
+  resolvedByUid: string;
+  resolvedByName: string;
+  resolvedAt: Timestamp;
+  text: string;
+  attachments?: Attachment[];
 }
 
 export interface Ticket {
@@ -41,21 +49,13 @@ export interface Ticket {
   status: TicketStatus;
   priority: TicketPriority;
   category: TicketCategory;
-  createdBy: string; // User UID
-  createdByName: string; // Denormalized for display
-  assignedTo?: string; // Worker UID
-  assignedToName?: string; // Denormalized for display
+  createdBy: string;
+  createdByName: string;
+  assignedTo?: string;
+  assignedToName?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
   messages: TicketMessage[];
-  attachments?: Attachment[]; // Added for file uploads
+  attachments?: Attachment[];
+  solution?: Solution; // Added solution field
 }
-
-// Removed TicketStats as per previous request
-// export interface TicketStats {
-//   totalTickets: number;
-//   openTickets: number;
-//   inProgressTickets: number;
-//   resolvedTickets: number;
-//   closedTickets: number;
-// }

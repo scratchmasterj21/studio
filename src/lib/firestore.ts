@@ -21,7 +21,7 @@ import {
   type DocumentSnapshot,
 } from 'firebase/firestore';
 import { db } from './firebase';
-import type { Ticket, TicketMessage, TicketStatus, UserProfile, UserRole, Attachment } from './types';
+import type { Ticket, TicketMessage, TicketStatus, UserProfile, UserRole, Attachment, Solution } from './types';
 import { ticketStatuses } from '@/config/site';
 
 // --- Default Worker Configuration ---
@@ -90,7 +90,7 @@ export const getAssignableAgents = (callback: (users: UserProfile[]) => void): U
 
 export const getAllUsers = (callback: (users: UserProfile[]) => void): Unsubscribe => {
   const usersRef = collection(db, 'users');
-  const q = query(usersRef, orderBy('displayName', 'asc')); 
+  const q = query(usersRef, orderBy('displayName', 'asc'));
 
   return onSnapshot(q, (snapshot: QuerySnapshot<DocumentData>) => {
     const users = snapshot.docs.map(docSnap => {
@@ -115,11 +115,11 @@ export const getAllUsers = (callback: (users: UserProfile[]) => void): Unsubscri
 
 // Ticket Functions
 export const createTicket = async (
-  ticketData: Omit<Ticket, 'id' | 'createdAt' | 'updatedAt' | 'messages' | 'createdByName' | 'status' | 'assignedTo' | 'assignedToName'> & { attachments?: Attachment[] },
+  ticketData: Omit<Ticket, 'id' | 'createdAt' | 'updatedAt' | 'messages' | 'createdByName' | 'status' | 'assignedTo' | 'assignedToName' | 'solution'> & { attachments?: Attachment[] },
   createdByProfile: UserProfile
 ): Promise<string> => {
   const ticketsRef = collection(db, 'tickets');
-  
+
   let assignedTo: string | undefined = undefined;
   let assignedToName: string | undefined = undefined;
   let status: TicketStatus = 'Open';
@@ -144,13 +144,24 @@ export const createTicket = async (
     updatedAt: serverTimestamp() as Timestamp,
     messages: [],
     attachments: ticketData.attachments || [],
+    solution: null, // Initialize solution as null
   };
   const docRef = await addDoc(ticketsRef, newTicket);
   return docRef.id;
 };
 
 const mapDocToTicket = (docSnap: DocumentSnapshot<DocumentData>): Ticket => {
-  const data = docSnap.data() as any; // Cast to any to handle potential undefined fields gracefully
+  const data = docSnap.data() as any;
+  let solutionData = null;
+  if (data.solution) {
+    solutionData = {
+      ...data.solution,
+      resolvedAt: data.solution.resolvedAt && typeof data.solution.resolvedAt.toDate === 'function'
+        ? data.solution.resolvedAt
+        : (data.solution.resolvedAt && data.solution.resolvedAt.seconds ? new Timestamp(data.solution.resolvedAt.seconds, data.solution.resolvedAt.nanoseconds) : Timestamp.now())
+    };
+  }
+
   return {
     id: docSnap.id,
     title: data.title || '',
@@ -162,13 +173,14 @@ const mapDocToTicket = (docSnap: DocumentSnapshot<DocumentData>): Ticket => {
     createdByName: data.createdByName || 'Unknown User',
     assignedTo: data.assignedTo,
     assignedToName: data.assignedToName,
-    createdAt: data.createdAt, // Assume these are Timestamps or handled by onSnapshot
+    createdAt: data.createdAt,
     updatedAt: data.updatedAt,
     messages: data.messages?.map((msg: any) => ({
         ...msg,
         timestamp: msg.timestamp && typeof msg.timestamp.toDate === 'function' ? msg.timestamp : (msg.timestamp && msg.timestamp.seconds ? new Timestamp(msg.timestamp.seconds, msg.timestamp.nanoseconds) : Timestamp.now())
     })) || [],
     attachments: data.attachments || [],
+    solution: solutionData,
   } as Ticket;
 };
 
@@ -179,7 +191,7 @@ export const onTicketsUpdate = (
   filters?: { status?: TicketStatus | "all", priority?: Ticket['priority'] | "all" }
 ): Unsubscribe => {
   const ticketsRef = collection(db, 'tickets');
-  let qConstraints: any[] = [orderBy('updatedAt', 'desc')]; 
+  let qConstraints: any[] = [orderBy('updatedAt', 'desc')];
 
   if (userProfile.role === 'admin') {
     if (filters?.status && filters.status !== "all") {
@@ -190,7 +202,9 @@ export const onTicketsUpdate = (
     }
   } else if (userProfile.role === 'worker') {
     qConstraints.push(where('assignedTo', '==', userProfile.uid));
-  } else { 
+    // Workers might also want to see tickets not yet closed
+    qConstraints.push(where('status', 'not-in', ['Closed', 'Resolved']));
+  } else {
     qConstraints.push(where('createdBy', '==', userProfile.uid));
   }
 
@@ -199,6 +213,8 @@ export const onTicketsUpdate = (
   return onSnapshot(q, (snapshot: QuerySnapshot<DocumentData>) => {
     const tickets = snapshot.docs.map(mapDocToTicket);
     callback(tickets);
+  }, (error) => {
+    console.error("Error in onTicketsUpdate snapshot listener:", error);
   });
 };
 
@@ -206,6 +222,8 @@ export const onTicketByIdUpdate = (ticketId: string, callback: (ticket: Ticket |
   const ticketRef = doc(db, 'tickets', ticketId);
   return onSnapshot(ticketRef, (docSnap) => {
     callback(docSnap.exists() ? mapDocToTicket(docSnap) : null);
+  }, (error) => {
+    console.error(`Error in onTicketByIdUpdate snapshot listener for ticket ${ticketId}:`, error);
   });
 };
 
@@ -216,6 +234,28 @@ export const updateTicketStatus = async (ticketId: string, status: TicketStatus)
     updatedAt: serverTimestamp(),
   });
 };
+
+export const resolveTicket = async (
+  ticketId: string,
+  solutionText: string,
+  solutionAttachments: Attachment[],
+  resolverProfile: UserProfile
+): Promise<void> => {
+  const ticketRef = doc(db, 'tickets', ticketId);
+  const solution: Solution = {
+    resolvedByUid: resolverProfile.uid,
+    resolvedByName: resolverProfile.displayName || resolverProfile.email || 'Support Agent',
+    resolvedAt: Timestamp.now(), // Client-side timestamp for when the solution was submitted
+    text: solutionText,
+    attachments: solutionAttachments,
+  };
+  await updateDoc(ticketRef, {
+    status: 'Resolved' as TicketStatus,
+    solution: solution,
+    updatedAt: serverTimestamp(), // Server-side timestamp for the ticket update
+  });
+};
+
 
 export const assignTicket = async (ticketId: string, workerId: string, workerName: string): Promise<void> => {
   const ticketRef = doc(db, 'tickets', ticketId);
@@ -231,9 +271,9 @@ export const addMessageToTicket = async (ticketId: string, messageData: Omit<Tic
   const ticketRef = doc(db, 'tickets', ticketId);
   const newMessage: TicketMessage = {
     ...messageData,
-    id: doc(collection(db, 'tmp')).id, 
+    id: doc(collection(db, 'tmp')).id,
     senderDisplayName: senderProfile.displayName || senderProfile.email || 'Unknown User',
-    timestamp: Timestamp.now(),
+    timestamp: Timestamp.now(), // Use client-side timestamp for messages
   };
   await updateDoc(ticketRef, {
     messages: arrayUnion(newMessage),

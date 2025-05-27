@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
-import type { Ticket, UserProfile, TicketStatus, Attachment } from '@/lib/types';
+import type { Ticket, UserProfile, TicketStatus, Attachment, Solution } from '@/lib/types'; // Added Solution
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
@@ -21,10 +21,10 @@ import {
 } from "@/components/ui/form";
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { addMessageToTicket, updateTicketStatus, assignTicket, getUserProfile, deleteTicket } from '@/lib/firestore';
+import { addMessageToTicket, updateTicketStatus, assignTicket, getUserProfile, deleteTicket, resolveTicket } from '@/lib/firestore'; // Added resolveTicket
 import TicketStatusBadge from './TicketStatusBadge';
 import TicketPriorityIcon from './TicketPriorityIcon';
-import { MessageSquare, Send, Edit3, Languages, Paperclip, Download, Image as ImageIcon, Video as VideoIcon, FileText, AlertTriangle, Trash2 } from 'lucide-react';
+import { MessageSquare, Send, Edit3, Languages, Paperclip, Download, Image as ImageIcon, Video as VideoIcon, FileText, AlertTriangle, Trash2, CheckCircle2, Info } from 'lucide-react';
 import LoadingSpinner from '../common/LoadingSpinner';
 import StatusSelector from './StatusSelector';
 import AssignTicketDialog from './AssignTicketDialog';
@@ -45,7 +45,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useRouter } from 'next/navigation';
-
+import ResolveTicketDialog from './ResolveTicketDialog'; // Import the new dialog
 
 const messageFormSchema = z.object({
   message: z.string().min(1, "Message cannot be empty.").max(1000, "Message is too long."),
@@ -61,9 +61,10 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
   const { toast } = useToast();
   const router = useRouter();
   const [isSubmittingMessage, setIsSubmittingMessage] = useState(false);
-  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false); // For non-resolve status changes
   const [isDeletingTicket, setIsDeletingTicket] = useState(false);
-  
+  const [showResolveDialog, setShowResolveDialog] = useState(false);
+
   const [translatedDescription, setTranslatedDescription] = useState<string | null>(null);
   const [isTranslatingDescription, setIsTranslatingDescription] = useState(false);
   const [showOriginalDescription, setShowOriginalDescription] = useState(true);
@@ -73,9 +74,6 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
   useEffect(() => {
     if (ticket.attachments && ticket.attachments.length > 0) {
       console.log('[TicketDetailView] Attachments found for ticket:', ticket.id, ticket.attachments);
-      ticket.attachments.forEach(att => {
-        console.log(`[TicketDetailView] Attachment - Name: ${att.name}, URL: ${att.url}, Type: ${att.type}, Size: ${att.size}, Key: ${att.fileKey}`);
-      });
     }
   }, [ticket.attachments, ticket.id]);
 
@@ -88,9 +86,9 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
     if (typeof window !== 'undefined') {
       return `${window.location.origin}/dashboard/tickets/${ticket.id}`;
     }
-    return `/dashboard/tickets/${ticket.id}`; 
+    return `/dashboard/tickets/${ticket.id}`;
   };
-  
+
   const getStandardFooter = () => `
     <p style="font-size: 0.9em; color: #555555; margin-top: 20px; border-top: 1px solid #eeeeee; padding-top: 10px;">
       This is an automated notification from FireDesk. Please do not reply directly to this email unless instructed.
@@ -112,15 +110,15 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
       toast({ title: "Message Sent", description: "Your reply has been added to the ticket." });
 
       let recipients: { email: string, name?: string }[] = [];
-      
-      if (ticket.createdBy !== currentUserProfile.uid) { 
-        const creatorProfile = await getUserProfile(ticket.createdBy); 
+
+      if (ticket.createdBy !== currentUserProfile.uid) {
+        const creatorProfile = await getUserProfile(ticket.createdBy);
         if (creatorProfile?.email) {
           recipients.push({ email: creatorProfile.email, name: creatorProfile.displayName || ticket.createdByName || 'User' });
         }
       }
       if (ticket.assignedTo && ticket.assignedTo !== currentUserProfile.uid) {
-        const workerProfile = await getUserProfile(ticket.assignedTo); 
+        const workerProfile = await getUserProfile(ticket.assignedTo);
         if (workerProfile?.email) {
           recipients.push({ email: workerProfile.email, name: workerProfile.displayName || ticket.assignedToName || 'Agent' });
         }
@@ -128,18 +126,12 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
       recipients = recipients.filter((r, index, self) =>
         index === self.findIndex((t) => t.email === r.email && r.email != null)
       );
-      
+
       if (recipients.length > 0) {
          const emailSent = await sendEmailViaBrevo({
            to: recipients,
            subject: `New Reply on FireDesk Ticket: ${ticket.title} (#${ticket.id.substring(0,8)})`,
-           htmlContent: `<p>A new reply has been added to FireDesk ticket <strong>${ticket.title}</strong> (#${ticket.id.substring(0,8)}) by <strong>${currentUserProfile.displayName || currentUserProfile.email} (${currentUserProfile.role})</strong>.</p>\
-<p><strong>Message:</strong></p>\
-<div style="padding: 10px; border-left: 3px solid #eee; margin: 10px 0; background-color: #f9f9f9;">\
-<p style="margin:0;">${values.message.replace(/\n/g, '<br>')}</p>\
-</div>\
-<p>You can view the ticket and reply by clicking the link below.</p>\
-${getStandardFooter()}`,
+           htmlContent: `<p>A new reply has been added to FireDesk ticket <strong>${ticket.title}</strong> (#${ticket.id.substring(0,8)}) by <strong>${currentUserProfile.displayName || currentUserProfile.email} (${currentUserProfile.role})</strong>.</p><p><strong>Message:</strong></p><div style="padding: 10px; border-left: 3px solid #eee; margin: 10px 0; background-color: #f9f9f9;"><p style="margin:0;">${values.message.replace(/\n/g, '<br>')}</p></div><p>You can view the ticket and reply by clicking the link below.</p>${getStandardFooter()}`,
          });
          if(!emailSent.success){
             console.warn("[EmailDebug] Failed to send 'new reply' email notification(s):", emailSent.message, emailSent.error);
@@ -153,9 +145,14 @@ ${getStandardFooter()}`,
       setIsSubmittingMessage(false);
     }
   };
-  
 
   const handleStatusChange = async (newStatus: TicketStatus) => {
+    if (newStatus === 'Resolved') {
+      setShowResolveDialog(true);
+      return; // Don't proceed with direct status update for "Resolved"
+    }
+
+    // For other statuses (Open, In Progress, Closed)
     setIsUpdatingStatus(true);
     try {
       await updateTicketStatus(ticket.id, newStatus);
@@ -166,58 +163,24 @@ ${getStandardFooter()}`,
       const ticketCreatorName = ticket.createdByName || 'User';
       const shortTicketId = ticket.id.substring(0,8);
 
-      if (newStatus === 'Resolved') {
-        emailSubject = `Update: Your FireDesk Ticket '${ticket.title}' (#${shortTicketId}) Has Been Resolved`;
-        emailHtmlContent = `
-          <p>Dear ${ticketCreatorName},</p>
-          <p>We've marked your ticket <strong>${ticket.title}</strong> (#${shortTicketId}) as <strong>Resolved</strong>.</p>
-          <p>If you feel the issue isn't fully addressed, please reply to the ticket by visiting the link below. Otherwise, no further action is needed from your side.</p>
-          ${getStandardFooter()}
-        `;
-      } else if (newStatus === 'Closed') {
+      if (newStatus === 'Closed') {
         emailSubject = `Your FireDesk Ticket '${ticket.title}' (#${shortTicketId}) Has Been Closed`;
-        emailHtmlContent = `
-          <p>Dear ${ticketCreatorName},</p>
-          <p>Your ticket <strong>${ticket.title}</strong> (#${shortTicketId}) has been <strong>Closed</strong>.</p>
-          <p>We hope your issue was resolved to your satisfaction. If you have any further questions, please feel free to submit a new ticket.</p>
-          ${getStandardFooter()}
-        `;
-      } else { 
+        emailHtmlContent = `<p>Dear ${ticketCreatorName},</p><p>Your ticket <strong>${ticket.title}</strong> (#${shortTicketId}) has been <strong>Closed</strong>.</p><p>We hope your issue was resolved to your satisfaction. If you have any further questions, please feel free to submit a new ticket.</p>${getStandardFooter()}`;
+      } else { // For Open, In Progress
         emailSubject = `FireDesk Ticket Status Updated: ${ticket.title} (#${shortTicketId}) to ${newStatus}`;
-        emailHtmlContent = `
-          <p>Dear ${ticketCreatorName},</p>
-          <p>The status of your ticket <strong>${ticket.title}</strong> (#${shortTicketId}) has been updated to <strong>${newStatus}</strong>.</p>
-          ${getStandardFooter()}
-        `;
+        emailHtmlContent = `<p>Dear ${ticketCreatorName},</p><p>The status of your ticket <strong>${ticket.title}</strong> (#${shortTicketId}) has been updated to <strong>${newStatus}</strong>.</p>${getStandardFooter()}`;
       }
 
-      console.log(`[EmailDebug] Status Change: Attempting to notify creator for ticket ${ticket.id}. Creator UID: ${ticket.createdBy}, Current User UID: ${currentUserProfile.uid}`);
       if (ticket.createdBy !== currentUserProfile.uid) {
-        console.log(`[EmailDebug] Status Change: Current user is NOT the creator. Fetching creator profile.`);
         const creatorProfile = await getUserProfile(ticket.createdBy);
         if (creatorProfile?.email) {
-          console.log(`[EmailDebug] Status Change: Creator profile found with email ${creatorProfile.email}. Sending email.`);
-          const emailResult = await sendEmailViaBrevo({
+          await sendEmailViaBrevo({
             to: [{ email: creatorProfile.email, name: creatorProfile.displayName || ticket.createdByName || 'User' }],
             subject: emailSubject,
             htmlContent: emailHtmlContent,
           });
-          if (!emailResult.success) {
-            console.warn(`[EmailDebug] Brevo reported an issue sending status update email for ticket ${ticket.id} to creator ${creatorProfile.email}: ${emailResult.message}`, emailResult.error);
-          } else {
-            console.log(`[EmailDebug] Status update email for ticket ${ticket.id} to creator ${creatorProfile.email} successfully dispatched via Brevo.`);
-          }
-        } else {
-          if (!creatorProfile) {
-            console.warn(`[EmailDebug] Status Change: Could not send email. Creator profile NOT FOUND for UID ${ticket.createdBy}.`);
-          } else {
-            console.warn(`[EmailDebug] Status Change: Could not send email. Creator profile found for UID ${ticket.createdBy}, but NO EMAIL address.`);
-          }
         }
-      } else {
-        console.log(`[EmailDebug] Status Change: Email NOT sent to creator because current user IS the creator.`);
       }
-
     } catch (error) {
       console.error("Error updating status:", error);
       toast({ title: "Error", description: "Failed to update status.", variant: "destructive" });
@@ -225,7 +188,56 @@ ${getStandardFooter()}`,
       setIsUpdatingStatus(false);
     }
   };
-  
+
+  const handleTicketResolved = async (solutionText: string, solutionAttachments: Attachment[]) => {
+    // This function is called by ResolveTicketDialog upon successful solution submission
+    // The ticket status is already updated to 'Resolved' and solution saved by firestore.resolveTicket
+    // Now, send the email notification.
+    const ticketCreatorName = ticket.createdByName || 'User';
+    const shortTicketId = ticket.id.substring(0,8);
+    const resolverName = currentUserProfile.displayName || currentUserProfile.email || 'Support Agent';
+
+    let attachmentsHtml = '';
+    if (solutionAttachments.length > 0) {
+      attachmentsHtml = '<p><strong>Solution Attachments:</strong></p><ul>';
+      solutionAttachments.forEach(att => {
+        attachmentsHtml += `<li><a href="${att.url}" target="_blank" rel="noopener noreferrer">${att.name}</a> (${(att.size / 1024 / 1024).toFixed(2)} MB)</li>`;
+      });
+      attachmentsHtml += '</ul>';
+    }
+
+    const emailSubject = `Your FireDesk Ticket Resolved: ${ticket.title} (#${shortTicketId})`;
+    const emailHtmlContent = `
+      <p>Dear ${ticketCreatorName},</p>
+      <p>Your ticket <strong>${ticket.title}</strong> (#${shortTicketId}) has been marked as <strong>Resolved</strong>.</p>
+      <p><strong>Solution provided by ${resolverName}:</strong></p>
+      <div style="padding: 10px; border-left: 3px solid #eee; margin: 10px 0; background-color: #f9f9f9;">
+        <p style="margin:0;">${solutionText.replace(/\n/g, '<br>')}</p>
+      </div>
+      ${attachmentsHtml}
+      <p>If you feel the issue isn't fully addressed, please reply to the ticket by visiting the link below. Otherwise, no further action is needed from your side.</p>
+      ${getStandardFooter()}
+    `;
+
+    if (ticket.createdBy !== currentUserProfile.uid) {
+      const creatorProfile = await getUserProfile(ticket.createdBy);
+      if (creatorProfile?.email) {
+        const emailResult = await sendEmailViaBrevo({
+          to: [{ email: creatorProfile.email, name: creatorProfile.displayName || ticket.createdByName || 'User' }],
+          subject: emailSubject,
+          htmlContent: emailHtmlContent,
+        });
+        if (!emailResult.success) {
+          console.warn(`[EmailDebug] Brevo reported an issue sending 'ticket resolved' email for ticket ${ticket.id} to creator ${creatorProfile.email}: ${emailResult.message}`, emailResult.error);
+          toast({ title: "Notification Error", description: "Failed to send resolution email to user.", variant: "destructive" });
+        }
+      }
+    }
+    // The ticket itself is already updated, so no need to call updateTicketStatus again.
+    // The UI will reflect the new status due to Firestore listener.
+  };
+
+
   const handleAssignTicket = async (workerId: string, workerName: string) => {
     try {
       await assignTicket(ticket.id, workerId, workerName);
@@ -237,26 +249,16 @@ ${getStandardFooter()}`,
         await sendEmailViaBrevo({
           to: [{ email: workerProfile.email, name: workerProfile.displayName || workerName }],
           subject: `New Ticket Assignment: ${ticket.title} (#${shortTicketId})`,
-          htmlContent: `
-            <p>Hello ${workerProfile.displayName || workerName},</p>
-            <p>You have been assigned a new ticket: <strong>${ticket.title}</strong> (#${shortTicketId}).</p>
-            <p>Please review the ticket details and take appropriate action.</p>
-            ${getStandardFooter()}
-          `,
+          htmlContent: `<p>Hello ${workerProfile.displayName || workerName},</p><p>You have been assigned a new ticket: <strong>${ticket.title}</strong> (#${shortTicketId}).</p><p>Please review the ticket details and take appropriate action.</p>${getStandardFooter()}`,
         });
       }
-       if (ticket.createdBy !== currentUserProfile.uid && ticket.createdBy !== workerId) { 
+       if (ticket.createdBy !== currentUserProfile.uid && ticket.createdBy !== workerId) {
         const creatorProfile = await getUserProfile(ticket.createdBy);
         if (creatorProfile?.email) {
           await sendEmailViaBrevo({
             to: [{ email: creatorProfile.email, name: creatorProfile.displayName || ticket.createdByName || 'User' }],
             subject: `FireDesk Ticket Assigned: ${ticket.title} (#${shortTicketId}) to ${workerName}`,
-            htmlContent: `
-              <p>Dear ${creatorProfile.displayName || ticket.createdByName || 'User'},</p>
-              <p>Your ticket <strong>${ticket.title}</strong> (#${shortTicketId}) has been assigned to <strong>${workerName}</strong>.</p>
-              <p>They will be looking into your issue shortly.</p>
-              ${getStandardFooter()}
-            `,
+            htmlContent: `<p>Dear ${creatorProfile.displayName || ticket.createdByName || 'User'},</p><p>Your ticket <strong>${ticket.title}</strong> (#${shortTicketId}) has been assigned to <strong>${workerName}</strong>.</p><p>They will be looking into your issue shortly.</p>${getStandardFooter()}`,
           });
         }
       }
@@ -270,7 +272,6 @@ ${getStandardFooter()}`,
   const handleDeleteTicket = async () => {
     setIsDeletingTicket(true);
     try {
-      // Step 1: Delete attachments from R2 if they exist
       if (ticket.attachments && ticket.attachments.length > 0) {
         console.log(`[TicketDelete] Deleting ${ticket.attachments.length} R2 attachments for ticket ${ticket.id}`);
         const deletionPromises = ticket.attachments.map(async (att) => {
@@ -291,7 +292,6 @@ ${getStandardFooter()}`,
                   variant: "destructive",
                   duration: 7000,
                 });
-                // We don't re-throw here, allowing Firestore deletion to proceed even if some R2 deletions fail.
               } else {
                 console.log(`[TicketDelete] Successfully deleted R2 attachment ${att.fileKey} (name: ${att.name}) for ticket ${ticket.id}`);
               }
@@ -308,32 +308,49 @@ ${getStandardFooter()}`,
             console.warn(`[TicketDelete] Attachment '${att.name}' for ticket ${ticket.id} is missing a fileKey. Cannot delete from R2.`);
           }
         });
-        // Wait for all R2 deletion attempts to complete (settle)
         await Promise.allSettled(deletionPromises);
-        console.log(`[TicketDelete] Finished all R2 attachment deletion attempts for ticket ${ticket.id}`);
-      } else {
-        console.log(`[TicketDelete] No R2 attachments to delete for ticket ${ticket.id}`);
       }
 
-      // Step 2: Delete the ticket document from Firestore
+      if (ticket.solution?.attachments && ticket.solution.attachments.length > 0) {
+        console.log(`[TicketDelete] Deleting ${ticket.solution.attachments.length} R2 solution attachments for ticket ${ticket.id}`);
+        const solutionDeletionPromises = ticket.solution.attachments.map(async (att) => {
+          if (att.fileKey) {
+             try {
+              const response = await fetch('/api/r2-delete-object', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fileKey: att.fileKey }),
+              });
+              const result = await response.json();
+              if (!response.ok || !result.success) {
+                console.warn(`[TicketDelete] Failed to delete R2 solution attachment ${att.fileKey} (name: ${att.name}) for ticket ${ticket.id}: ${result.error || result.message}`);
+              } else {
+                 console.log(`[TicketDelete] Successfully deleted R2 solution attachment ${att.fileKey} (name: ${att.name}) for ticket ${ticket.id}`);
+              }
+            } catch (r2Error) {
+               console.error(`[TicketDelete] Network or other error calling R2 delete API for solution attachment ${att.fileKey} (name: ${att.name}):`, r2Error);
+            }
+          }
+        });
+        await Promise.allSettled(solutionDeletionPromises);
+      }
+
+
       console.log(`[TicketDelete] Proceeding to delete Firestore document for ticket ${ticket.id}`);
-      await deleteTicket(ticket.id); // This function only deletes from Firestore
+      await deleteTicket(ticket.id);
       toast({ title: "Ticket Deleted", description: `Ticket "${ticket.title}" has been successfully deleted. Associated attachments were also attempted to be removed from storage.` });
-      router.push('/dashboard'); // Redirect to dashboard after deletion
+      router.push('/dashboard');
     } catch (error) {
-      // This catch block will primarily catch errors from deleteTicket (Firestore deletion)
-      // or if an R2 deletion error was re-thrown (which we are currently not doing).
-      console.error("Error during the overall ticket deletion process (Firestore or critical R2 error):", error);
+      console.error("Error during the overall ticket deletion process:", error);
       toast({ title: "Ticket Deletion Error", description: "Failed to delete the ticket from Firestore. Please try again or check server logs.", variant: "destructive" });
-      setIsDeletingTicket(false); // Only reset if we didn't redirect
+      setIsDeletingTicket(false);
     }
-    // No 'finally' needed here, as redirection on success unmounts the component.
   };
 
   const handleTranslateDescription = async () => {
     if (!ticket.description) return;
 
-    if (!showOriginalDescription) { 
+    if (!showOriginalDescription) {
       setShowOriginalDescription(true);
       return;
     }
@@ -351,19 +368,19 @@ ${getStandardFooter()}`,
       };
       const result = await translateText(input);
       setTranslatedDescription(result.translatedText);
-      setShowOriginalDescription(false); 
+      setShowOriginalDescription(false);
     } catch (error) {
       console.error("Error translating description:", error);
       toast({ title: "Translation Error", description: "Could not translate the description.", variant: "destructive" });
-      setTranslatedDescription(null); 
-      setShowOriginalDescription(true); 
+      setTranslatedDescription(null);
+      setShowOriginalDescription(true);
     } finally {
       setIsTranslatingDescription(false);
     }
   };
 
   const displayedDescriptionText = showOriginalDescription || !translatedDescription ? ticket.description : translatedDescription;
-  
+
   let translateDescriptionButtonText = "Translate";
   if (isTranslatingDescription) {
     translateDescriptionButtonText = "Translating...";
@@ -376,23 +393,125 @@ ${getStandardFooter()}`,
 
 
   const canManageTicket = currentUserProfile.role === 'admin' || (currentUserProfile.role === 'worker' && ticket.assignedTo === currentUserProfile.uid);
-  
-  const lastUpdatedText = ticket.updatedAt && typeof ticket.updatedAt.toDate === 'function' 
-    ? format(ticket.updatedAt.toDate(), 'PPpp') 
+
+  const lastUpdatedText = ticket.updatedAt && typeof ticket.updatedAt.toDate === 'function'
+    ? format(ticket.updatedAt.toDate(), 'PPpp')
     : 'N/A';
-    
-  const createdAtDate = ticket.createdAt && typeof ticket.createdAt.toDate === 'function' 
+
+  const createdAtDate = ticket.createdAt && typeof ticket.createdAt.toDate === 'function'
     ? format(ticket.createdAt.toDate(), 'PPpp')
     : 'N/A';
-    
-  const createdAtFormatted = ticket.createdAt && typeof ticket.createdAt.toDate === 'function' 
+
+  const createdAtFormatted = ticket.createdAt && typeof ticket.createdAt.toDate === 'function'
     ? format(ticket.createdAt.toDate(), 'MMM d, yyyy')
     : 'N/A';
 
   const getAttachmentIcon = (type: string) => {
     if (type.startsWith('image/')) return <ImageIcon className="h-5 w-5 text-primary" />;
     if (type.startsWith('video/')) return <VideoIcon className="h-5 w-5 text-primary" />;
+    if (type === 'application/pdf') return <FileText className="h-5 w-5 text-red-500" />;
     return <FileText className="h-5 w-5 text-muted-foreground" />;
+  };
+
+  const renderAttachments = (attachments: Attachment[], title: string) => {
+    if (!attachments || attachments.length === 0) return null;
+    return (
+      <div className="mt-6 pt-4 border-t">
+        <h3 className="text-md font-semibold mb-3 flex items-center">
+          <Paperclip className="h-5 w-5 mr-2 text-muted-foreground" />
+          {title} ({attachments.length})
+        </h3>
+        <div className="space-y-3">
+          {attachments.map((att) => (
+            <Card key={att.id} className="p-3 shadow-sm bg-muted/30">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 overflow-hidden">
+                  {getAttachmentIcon(att.type)}
+                  <div className="flex flex-col overflow-hidden">
+                    <span className="text-sm font-medium truncate" title={att.name}>
+                      {att.name}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      ({(att.size / 1024 / 1024).toFixed(2)} MB) - {att.type}
+                    </span>
+                  </div>
+                </div>
+                <a
+                  href={att.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  download={att.name}
+                  className="shrink-0"
+                >
+                  <Button variant="outline" size="sm">
+                    <Download className="h-4 w-4 mr-2" />
+                    Download
+                  </Button>
+                </a>
+              </div>
+              {att.type.startsWith('image/') && (
+                <div className="mt-3 rounded-md overflow-hidden border max-w-xs mx-auto sm:mx-0">
+                   <NextImage
+                    src={att.url}
+                    alt={`Attachment: ${att.name}`}
+                    width={300}
+                    height={200}
+                    className="object-contain w-full h-auto max-h-60"
+                    unoptimized={true}
+                    onError={(e) => {
+                      setAttachmentLoadErrorOccurred(true);
+                      const errorTarget = e.target as HTMLImageElement;
+                      console.error(`[TicketDetailView] Failed to load image: ${att.url}. Natural width: ${errorTarget.naturalWidth}.`);
+                      toast({
+                        title: "Image Load Error",
+                        description: `Could not load image: ${att.name}. An "Invalid Argument Authorization" or 403 Forbidden error for the URL typically means the R2 object is private. Please check R2 public access permissions and ensure objects are publicly readable.`,
+                        variant: "destructive",
+                        duration: 7000,
+                      });
+                    }}
+                  />
+                </div>
+              )}
+              {att.type.startsWith('video/') && (
+                <div className="mt-3 rounded-md overflow-hidden border max-w-md mx-auto sm:mx-0">
+                  <video
+                    controls
+                    className="w-full max-h-80"
+                    preload="metadata"
+                    src={att.url}
+                    type={att.type}
+                    onError={(e) => {
+                      setAttachmentLoadErrorOccurred(true);
+                      const errorTarget = e.target as HTMLVideoElement;
+                      const errorCode = errorTarget.error?.code;
+                      let errorMessage = errorTarget.error?.message || "Unknown video error";
+                      console.error(`[TicketDetailView] Failed to load video: ${att.url}. Error code: ${errorCode}, Message: ${errorMessage}`);
+
+                      let toastDescription = `Could not load video: ${att.name}.`;
+                      if (errorCode === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) { // Code 4
+                        toastDescription = `Video format or codec for "${att.name}" is not supported by your browser, or the file might be corrupted. Please try a different video format (e.g., common MP4 H.264). Also ensure the R2 object is publicly readable and the content type is correct (e.g., 'video/mp4').`;
+                      } else if (errorMessage.toLowerCase().includes("authorization") || (errorTarget.error && !errorCode)) {
+                        toastDescription = `Could not load video: ${att.name}. This often indicates an "Invalid Argument Authorization" or similar access error, meaning the R2 object is private. Please check R2 public access permissions and ensure objects are publicly readable.`;
+                      } else {
+                        toastDescription += ` Browser error: ${errorMessage} (Code: ${errorCode}). Ensure the R2 object is publicly readable and the content type is correctly set in R2.`;
+                      }
+                      toast({
+                        title: "Video Load Error",
+                        description: toastDescription,
+                        variant: "destructive",
+                        duration: 7000,
+                      });
+                    }}
+                  >
+                    Your browser does not support the video tag for type {att.type}. URL: <a href={att.url} target="_blank" rel="noopener noreferrer">{att.url}</a>
+                  </video>
+                </div>
+              )}
+            </Card>
+          ))}
+        </div>
+      </div>
+    );
   };
 
 
@@ -446,115 +565,36 @@ ${getStandardFooter()}`,
                 <AlertTitle>Attachment Loading Error</AlertTitle>
                 <AlertDescription>
                   One or more attachments could not be loaded. This often means the files in Cloudflare R2 are not publicly readable.
-                  If you see "Invalid Argument Authorization" or 403 Forbidden errors when trying the URL directly, this is a strong indicator of private R2 objects.
-                  Please check your R2 bucket settings (ensure public access is "Allowed" for the bucket or relevant prefixes) and verify your R2 bucket's CORS policy allows GET requests from this application's origin.
+                  An "Invalid Argument Authorization" or 403 Forbidden error when trying the URL directly strongly indicates private R2 objects.
+                  Please check your R2 bucket settings (ensure public access is "Allowed") and verify your R2 bucket's CORS policy allows GET requests from this application's origin.
                 </AlertDescription>
               </Alert>
             )}
-            {ticket.attachments && ticket.attachments.length > 0 && (
-              <div className="mt-6 pt-4 border-t">
-                <h3 className="text-md font-semibold mb-3 flex items-center">
-                  <Paperclip className="h-5 w-5 mr-2 text-muted-foreground" />
-                  Attachments ({ticket.attachments.length})
-                </h3>
-                <div className="space-y-3">
-                  {ticket.attachments.map((att) => (
-                    <Card key={att.id} className="p-3 shadow-sm bg-muted/30">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-3 overflow-hidden">
-                          {getAttachmentIcon(att.type)}
-                          <div className="flex flex-col overflow-hidden">
-                            <span className="text-sm font-medium truncate" title={att.name}>
-                              {att.name}
-                            </span>
-                            <span className="text-xs text-muted-foreground">
-                              ({(att.size / 1024 / 1024).toFixed(2)} MB) - {att.type}
-                            </span>
-                          </div>
-                        </div>
-                        <a
-                          href={att.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          download={att.name}
-                          className="shrink-0"
-                        >
-                          <Button variant="outline" size="sm">
-                            <Download className="h-4 w-4 mr-2" />
-                            Download
-                          </Button>
-                        </a>
-                      </div>
-                      {att.type.startsWith('image/') && (
-                        <div className="mt-3 rounded-md overflow-hidden border max-w-xs mx-auto sm:mx-0">
-                           <NextImage
-                            src={att.url}
-                            alt={`Attachment: ${att.name}`}
-                            width={300}
-                            height={200}
-                            className="object-contain w-full h-auto max-h-60"
-                            unoptimized={true} 
-                            onError={(e) => {
-                              setAttachmentLoadErrorOccurred(true);
-                              const errorTarget = e.target as HTMLImageElement;
-                              console.error(`[TicketDetailView] Failed to load image: ${att.url}. Natural width: ${errorTarget.naturalWidth}. Error:`, 'Unknown image error');
-                              toast({
-                                title: "Image Load Error",
-                                description: `Could not load image: ${att.name}. An "Invalid Argument Authorization" or 403 Forbidden error for the URL typically means the R2 object is private. Please check R2 public access permissions and ensure objects are publicly readable.`,
-                                variant: "destructive",
-                                duration: 7000,
-                              });
-                            }}
-                          />
-                        </div>
-                      )}
-                      {att.type.startsWith('video/') && (
-                        <div className="mt-3 rounded-md overflow-hidden border max-w-md mx-auto sm:mx-0">
-                          <video
-                            controls
-                            className="w-full max-h-80"
-                            preload="metadata"
-                            src={att.url}
-                            type={att.type} 
-                            onError={(e) => {
-                              setAttachmentLoadErrorOccurred(true);
-                              const errorTarget = e.target as HTMLVideoElement;
-                              const errorCode = errorTarget.error?.code;
-                              let errorMessage = errorTarget.error?.message || "Unknown video error";
-                              console.error(`[TicketDetailView] Failed to load video: ${att.url}. Error code: ${errorCode}, Message: ${errorMessage}`);
-                              
-                              let toastDescription = `Could not load video: ${att.name}.`;
-                              if (errorCode === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) { // Code 4
-                                toastDescription = `Video format or codec for "${att.name}" is not supported by your browser, or the file might be corrupted. Please try a different video format (e.g., common MP4 H.264). Also ensure the R2 object is publicly readable and the content type is correct (e.g., 'video/mp4').`;
-                              } else if (errorMessage.toLowerCase().includes("authorization") || (errorTarget.error && !errorCode)) { 
-                                toastDescription = `Could not load video: ${att.name}. This often indicates an "Invalid Argument Authorization" or similar access error, meaning the R2 object is private. Please check R2 public access permissions and ensure objects are publicly readable.`;
-                              } else {
-                                toastDescription += ` Browser error: ${errorMessage} (Code: ${errorCode}). Ensure the R2 object is publicly readable and the content type is correctly set in R2.`;
-                              }
-                              toast({
-                                title: "Video Load Error",
-                                description: toastDescription,
-                                variant: "destructive",
-                                duration: 7000,
-                              });
-                            }}
-                          >
-                            Your browser does not support the video tag for type {att.type}. URL: <a href={att.url} target="_blank" rel="noopener noreferrer">{att.url}</a>
-                          </video>
-                        </div>
-                      )}
-                    </Card>
-                  ))}
-                </div>
-              </div>
-            )}
-
-
+            {renderAttachments(ticket.attachments || [], 'Ticket Attachments')}
           </CardContent>
           <CardFooter className="text-xs text-muted-foreground border-t pt-4">
              Last updated: {lastUpdatedText}
           </CardFooter>
         </Card>
+
+        {ticket.solution && (
+          <Card className="shadow-md border-green-500 border-2">
+            <CardHeader className="bg-green-50 dark:bg-green-900/30">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-6 w-6 text-green-600" />
+                <CardTitle className="text-xl text-green-700 dark:text-green-400">Ticket Resolved</CardTitle>
+              </div>
+              <CardDescription className="text-sm text-green-600 dark:text-green-500 pt-1">
+                Resolved by {ticket.solution.resolvedByName || 'Support Agent'} on {ticket.solution.resolvedAt && typeof ticket.solution.resolvedAt.toDate === 'function' ? format(ticket.solution.resolvedAt.toDate(), 'PPpp') : 'N/A'}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="pt-4">
+              <Label className="text-xs text-muted-foreground mb-1">Solution Provided:</Label>
+              <p className="whitespace-pre-wrap text-foreground leading-relaxed">{ticket.solution.text}</p>
+              {renderAttachments(ticket.solution.attachments || [], 'Solution Attachments')}
+            </CardContent>
+          </Card>
+        )}
 
         <Card className="shadow-md">
           <CardHeader>
@@ -575,7 +615,7 @@ ${getStandardFooter()}`,
           </CardContent>
         </Card>
 
-        {ticket.status !== 'Closed' && (
+        {ticket.status !== 'Closed' && ticket.status !== 'Resolved' && (
           <Card className="shadow-md">
             <CardHeader>
               <CardTitle className="text-xl flex items-center"><Edit3 className="mr-2 h-5 w-5" /> Add Your Reply</CardTitle>
@@ -604,6 +644,27 @@ ${getStandardFooter()}`,
               </Form>
             </CardContent>
           </Card>
+        )}
+         {ticket.status === 'Resolved' && currentUserProfile.uid === ticket.createdBy && (
+            <Card className="shadow-md">
+                <CardHeader>
+                    <CardTitle className="text-xl flex items-center"><Info className="mr-2 h-5 w-5 text-blue-500"/> Issue Resolved?</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                    <p className="text-sm text-muted-foreground">
+                        This ticket has been marked as resolved. If the solution provided addresses your issue, you can close this ticket.
+                        If you are still experiencing problems, please add a reply above, and the ticket status will be re-opened for further assistance.
+                    </p>
+                    <Button 
+                        onClick={() => handleStatusChange('Closed')} 
+                        disabled={isUpdatingStatus}
+                        className="w-full"
+                    >
+                        {isUpdatingStatus ? <LoadingSpinner size="sm" className="mr-2" /> : null}
+                        Yes, Close My Ticket
+                    </Button>
+                </CardContent>
+            </Card>
         )}
       </div>
 
@@ -641,7 +702,7 @@ ${getStandardFooter()}`,
             </div>
           </CardContent>
         </Card>
-        
+
         {canManageTicket && ticket.status !== 'Closed' && (
           <Card className="shadow-md">
             <CardHeader>
@@ -653,7 +714,7 @@ ${getStandardFooter()}`,
                 <StatusSelector
                   currentStatus={ticket.status}
                   onStatusChange={handleStatusChange}
-                  disabled={isUpdatingStatus || ticket.status === 'Closed'}
+                  disabled={isUpdatingStatus || showResolveDialog || ticket.status === 'Closed'}
                 />
                  {isUpdatingStatus && <LoadingSpinner size="sm" className="mt-2"/>}
               </div>
@@ -661,8 +722,8 @@ ${getStandardFooter()}`,
               {currentUserProfile.role === 'admin' && (
                 <div>
                   <Label className="text-sm font-medium mb-1 block">Assign Ticket</Label>
-                  <AssignTicketDialog 
-                    ticketId={ticket.id} 
+                  <AssignTicketDialog
+                    ticketId={ticket.id}
                     currentAssigneeId={ticket.assignedTo}
                     onAssign={handleAssignTicket}
                   />
@@ -690,7 +751,7 @@ ${getStandardFooter()}`,
                     <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                     <AlertDialogDescription>
                       This action cannot be undone. This will permanently delete the ticket
-                      titled "{ticket.title || "this ticket"}" and all of its associated data, 
+                      titled "{ticket.title || "this ticket"}" and all of its associated data,
                       including messages and attempts to remove attachments from storage.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
@@ -711,12 +772,16 @@ ${getStandardFooter()}`,
           </Card>
         )}
       </div>
+      {showResolveDialog && (
+        <ResolveTicketDialog
+          isOpen={showResolveDialog}
+          onOpenChange={setShowResolveDialog}
+          ticketId={ticket.id}
+          ticketTitle={ticket.title}
+          currentUserProfile={currentUserProfile}
+          onTicketResolved={handleTicketResolved}
+        />
+      )}
     </div>
   );
 }
-
-    
-
-    
-
-    
