@@ -26,9 +26,8 @@ import type { Ticket, TicketMessage, TicketStatus, UserProfile, UserRole, Attach
 import { ticketStatuses } from '@/config/site';
 
 // --- Default Worker Configuration ---
-// IMPORTANT: Replace these placeholder values with the actual UID and display name of your default support agent.
 const DEFAULT_WORKER_UID = "JoKT2FdbqzczhTQf5KumE865Tdh2";
-const DEFAULT_WORKER_NAME = "John Carlo Limpiada"; // Or the actual name
+const DEFAULT_WORKER_NAME = "John Carlo Limpiada";
 
 // User Profile Functions
 export const createUserProfile = async (userAuth: any, additionalData = {}): Promise<void> => {
@@ -100,7 +99,7 @@ export const getAllUsers = (callback: (users: UserProfile[]) => void): Unsubscri
       if (createdAtTimestamp && typeof createdAtTimestamp.toDate !== 'function' && createdAtTimestamp.seconds) {
         createdAtTimestamp = new Timestamp(createdAtTimestamp.seconds, createdAtTimestamp.nanoseconds);
       } else if (!createdAtTimestamp) {
-        createdAtTimestamp = Timestamp.now(); // Fallback if createdAt is missing
+        createdAtTimestamp = Timestamp.now(); 
       }
 
       return {
@@ -123,12 +122,12 @@ export const createTicket = async (
 
   let assignedTo: string | undefined = undefined;
   let assignedToName: string | undefined = undefined;
-  let status: TicketStatus = 'Open'; // Default status is Open
+  let status: TicketStatus = 'Open'; // Default status is Open, even if assigned
 
   if (DEFAULT_WORKER_UID && DEFAULT_WORKER_UID !== "REPLACE_WITH_DEFAULT_WORKER_UID") {
     assignedTo = DEFAULT_WORKER_UID;
     assignedToName = DEFAULT_WORKER_NAME;
-    // status remains 'Open' even if assigned by default. It becomes 'In Progress' when the worker starts working.
+    // Status remains 'Open'
   }
 
   const newTicket = {
@@ -136,7 +135,7 @@ export const createTicket = async (
     description: ticketData.description,
     category: ticketData.category,
     priority: ticketData.priority,
-    status: status, // Initial status will be "Open"
+    status: status,
     createdBy: createdByProfile.uid,
     createdByName: createdByProfile.displayName || createdByProfile.email || 'Unknown User',
     assignedTo: assignedTo,
@@ -203,8 +202,8 @@ export const onTicketsUpdate = (
     }
   } else if (userProfile.role === 'worker') {
     qConstraints.push(where('assignedTo', '==', userProfile.uid));
-    qConstraints.push(where('status', 'not-in', ['Closed', 'Resolved']));
-  } else {
+    qConstraints.push(where('status', 'not-in', ['Closed', 'Resolved'])); // Workers primarily see active tickets
+  } else { // user role
     qConstraints.push(where('createdBy', '==', userProfile.uid));
   }
 
@@ -234,39 +233,43 @@ export const updateTicketStatus = async (ticketId: string, newStatus: TicketStat
     updatedAt: serverTimestamp(),
   };
 
-  if (newStatus === 'Open' || newStatus === 'In Progress') {
+  // If moving AWAY from Resolved to an active state (Open or In Progress), clear the solution and delete its attachments
+  if ((newStatus === 'Open' || newStatus === 'In Progress')) {
     try {
       const ticketSnap = await getDoc(ticketRef);
       if (ticketSnap.exists()) {
         const ticketData = ticketSnap.data() as Ticket;
-        if (ticketData.status === 'Resolved' && ticketData.solution?.attachments && ticketData.solution.attachments.length > 0) {
-          console.log(`[UpdateStatus] Ticket ${ticketId} moved from Resolved. Attempting to delete ${ticketData.solution.attachments.length} solution attachments from R2.`);
-          const deletionPromises = ticketData.solution.attachments.map(async (att) => {
-            if (att.fileKey) {
-              try {
-                const response = await fetch('/api/r2-delete-object', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ fileKey: att.fileKey }),
-                });
-                const result = await response.json();
-                if (!response.ok || !result.success) {
-                  console.warn(`[UpdateStatus] Failed to delete R2 solution attachment ${att.fileKey} for ticket ${ticketId}: ${result.error || result.message}`);
-                } else {
-                  console.log(`[UpdateStatus] Successfully deleted R2 solution attachment ${att.fileKey} for ticket ${ticketId}`);
+        // Only clear solution if the *previous* status was Resolved
+        if (ticketData.status === 'Resolved' && ticketData.solution) { 
+          console.log(`[UpdateStatus] Ticket ${ticketId} manually moved from Resolved. Attempting to delete ${ticketData.solution.attachments?.length || 0} solution attachments from R2.`);
+          if (ticketData.solution.attachments && ticketData.solution.attachments.length > 0) {
+            const deletionPromises = ticketData.solution.attachments.map(async (att) => {
+              if (att.fileKey) {
+                try {
+                  const response = await fetch('/api/r2-delete-object', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ fileKey: att.fileKey }),
+                  });
+                  const result = await response.json();
+                  if (!response.ok || !result.success) {
+                    console.warn(`[UpdateStatus] Failed to delete R2 solution attachment ${att.fileKey} for ticket ${ticketId}: ${result.error || result.message}`);
+                  } else {
+                    console.log(`[UpdateStatus] Successfully deleted R2 solution attachment ${att.fileKey} for ticket ${ticketId}`);
+                  }
+                } catch (r2Error) {
+                  console.error(`[UpdateStatus] Error calling R2 delete API for solution attachment ${att.fileKey}:`, r2Error);
                 }
-              } catch (r2Error) {
-                console.error(`[UpdateStatus] Error calling R2 delete API for solution attachment ${att.fileKey}:`, r2Error);
               }
-            }
-          });
-          await Promise.allSettled(deletionPromises);
+            });
+            await Promise.allSettled(deletionPromises);
+          }
+          updateData.solution = null; // Clear the solution from Firestore
         }
       }
     } catch (error) {
-        console.error(`[UpdateStatus] Error fetching ticket ${ticketId} before clearing solution:`, error);
+        console.error(`[UpdateStatus] Error fetching ticket ${ticketId} before potentially clearing solution:`, error);
     }
-    updateData.solution = null;
   }
   
   await updateDoc(ticketRef, updateData);
@@ -299,7 +302,7 @@ export const assignTicket = async (ticketId: string, workerId: string, workerNam
   await updateDoc(ticketRef, {
     assignedTo: workerId,
     assignedToName: workerName,
-    status: 'In Progress', 
+    status: 'In Progress', // Assigning a ticket usually means it's being actively looked at.
     updatedAt: serverTimestamp(),
   });
 };
@@ -313,50 +316,15 @@ export const addMessageToTicket = async (ticketId: string, messageData: Omit<Tic
     timestamp: Timestamp.now(), // Use client-side timestamp for messages
   };
 
-  const ticketSnap = await getDoc(ticketRef);
-  const currentTicketData = ticketSnap.data() as Ticket | undefined;
-  let newStatus: TicketStatus | undefined = undefined;
-  let shouldClearSolution = false;
-
-  if (currentTicketData && (currentTicketData.status === 'Resolved' || currentTicketData.status === 'Closed')) {
-    newStatus = 'In Progress'; // Re-open the ticket
-    if (currentTicketData.status === 'Resolved' && currentTicketData.solution?.attachments && currentTicketData.solution.attachments.length > 0) {
-      console.log(`[AddMessage] Ticket ${ticketId} re-opened by message. Attempting to delete ${currentTicketData.solution.attachments.length} solution attachments from R2.`);
-      const deletionPromises = currentTicketData.solution.attachments.map(async (att) => {
-        if (att.fileKey) {
-          try {
-            const response = await fetch('/api/r2-delete-object', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ fileKey: att.fileKey }),
-            });
-            const result = await response.json();
-            if (!response.ok || !result.success) {
-              console.warn(`[AddMessage] Failed to delete R2 solution attachment ${att.fileKey} for ticket ${ticketId} during re-open: ${result.error || result.message}`);
-            } else {
-              console.log(`[AddMessage] Successfully deleted R2 solution attachment ${att.fileKey} for ticket ${ticketId} during re-open`);
-            }
-          } catch (r2Error) {
-            console.error(`[AddMessage] Error calling R2 delete API for solution attachment ${att.fileKey} during re-open:`, r2Error);
-          }
-        }
-      });
-      await Promise.allSettled(deletionPromises);
-    }
-    shouldClearSolution = true;
-  }
-
+  // When a new message is added, just add the message and update the timestamp.
+  // Do NOT automatically change status or clear solutions.
+  // The logic for re-opening a ticket and clearing its solution is now handled
+  // exclusively in `updateTicketStatus` when a worker/admin manually changes
+  // a "Resolved" ticket to "Open" or "In Progress".
   const updatePayload: any = {
     messages: arrayUnion(newMessage),
     updatedAt: serverTimestamp(),
   };
-
-  if (newStatus) {
-    updatePayload.status = newStatus;
-  }
-  if (shouldClearSolution) {
-     updatePayload.solution = null;
-  }
 
   await updateDoc(ticketRef, updatePayload);
 };
@@ -365,3 +333,4 @@ export const deleteTicket = async (ticketId: string): Promise<void> => {
   const ticketRef = doc(db, 'tickets', ticketId);
   await deleteDoc(ticketRef);
 };
+
