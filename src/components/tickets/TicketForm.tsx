@@ -24,10 +24,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { createTicket, getUserProfile } from "@/lib/firestore";
+import { createTicket } from "@/lib/firestore"; // getUserProfile removed as it's not used here directly
 import type { TicketCategory, TicketPriority, UserProfile, Attachment } from "@/lib/types";
 import { ticketCategories, ticketPriorities } from "@/config/site";
-import { useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation'; // Using next/navigation as per previous fixes
 import { useState, useRef } from "react";
 import LoadingSpinner from "../common/LoadingSpinner";
 import { sendEmailViaBrevo } from "@/lib/brevo";
@@ -123,13 +123,14 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
   const handleFileUpload = async (fileEntry: UploadableFile) => {
     const { file, id: fileId } = fileEntry;
 
-    // Update status to 'uploading' using functional update
-    // This ensures we're working with the latest state.
+    // Update status to 'uploading' and clear previous errors for this file entry.
+    // This ensures we work with the latest state for checking current status.
     setUploadableFiles(prevFiles => {
-        const existingFile = prevFiles.find(uf => uf.id === fileId);
-        if (!existingFile || existingFile.status === 'uploading' || existingFile.status === 'success') {
-             console.log(`[FileUpload] Skipped upload for ${file.name}: Status is ${existingFile?.status} or file not found for immediate update.`);
-             return prevFiles; // Don't proceed if already uploading/success or somehow not found for this initial status update
+        const currentFileState = prevFiles.find(uf => uf.id === fileId);
+        // Only proceed if the file is not already uploading or successfully uploaded.
+        if (currentFileState && (currentFileState.status === 'uploading' || currentFileState.status === 'success')) {
+            console.log(`[FileUpload] Skipped upload for ${file.name}: Status is ${currentFileState.status}.`);
+            return prevFiles;
         }
         return prevFiles.map(uf =>
             uf.id === fileId ? { ...uf, status: 'uploading', progress: 0, error: undefined } : uf
@@ -168,7 +169,7 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
       if (!uploadResponse.ok) {
         const errorText = await uploadResponse.text();
         console.error(`[FileUpload] R2 Upload failed for ${file.name}. Status: ${uploadResponse.status}, Body: ${errorText}`);
-        throw new Error(`Upload failed with status: ${uploadResponse.status}. R2 Message: ${errorText}`);
+        throw new Error(`Upload to storage failed for ${file.name}. Status: ${uploadResponse.status}. Message: ${errorText || 'No additional error message from storage provider.'}`);
       }
       
       console.log(`[FileUpload] Successfully uploaded ${file.name} to R2.`);
@@ -188,10 +189,18 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
 
     } catch (error: any) {
       console.error(`[FileUpload] Error during upload process for ${file.name}:`, error);
-      setUploadableFiles(prev => prev.map(uf => uf.id === fileId ? { ...uf, status: 'error', error: error.message || 'Upload failed' } : uf));
+      
+      let detailedErrorMessage = "Failed to upload file. Check your network connection.";
+      if (error.message && error.message.toLowerCase().includes('failed to fetch')) {
+        detailedErrorMessage = "Upload failed. This could be a network issue or a CORS configuration problem with the storage provider. Please check your browser console and ensure R2 CORS settings are correct.";
+      } else if (error.message) {
+        detailedErrorMessage = error.message;
+      }
+
+      setUploadableFiles(prev => prev.map(uf => uf.id === fileId ? { ...uf, status: 'error', error: detailedErrorMessage } : uf));
       toast({
         title: `Upload Error: ${file.name}`,
-        description: error.message || "Failed to upload file.",
+        description: detailedErrorMessage,
         variant: "destructive",
       });
     }
@@ -394,7 +403,7 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
                       variant="ghost"
                       size="icon"
                       className="h-7 w-7"
-                      onClick={() => handleFileUpload(uf)} // Pass the whole uf object
+                      onClick={() => handleFileUpload(uf)} 
                       disabled={uf.status === 'uploading'}
                       title="Retry Upload"
                     >
@@ -483,4 +492,3 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
   );
 }
 
-    
