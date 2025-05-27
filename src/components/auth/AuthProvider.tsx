@@ -6,7 +6,7 @@ import { onAuthStateChanged, signInWithPopup, signOut as firebaseSignOut } from 
 import type { FirebaseError } from 'firebase/app';
 import { doc, getDoc, serverTimestamp, setDoc, Timestamp } from 'firebase/firestore';
 import { usePathname } from 'next/navigation';
-import { useRouter } from 'next-international/client'; // Corrected import
+import { useRouter } from 'next-international/client'; 
 import { useCurrentLocale } from '@/lib/i18n/client';
 import type { ReactNode} from 'react';
 import React, { createContext, useContext, useEffect, useState } from 'react';
@@ -174,15 +174,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const signOut = async () => {
-    if (loading) return;
+    if (loading) return; // Prevent sign out if initial loading is not complete
     
-    setLoading(true);
+    setLoading(true); // Indicate sign-out process is starting
     
     try {
       await firebaseSignOut(auth);
       setUser(null);
       setUserProfile(null);
-      router.replace('/login');
+      router.replace('/login'); // Redirect to login page after sign out
       toast({ 
         title: 'Signed Out', 
         description: "You have been successfully signed out.",
@@ -197,12 +197,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         variant: 'destructive',
       });
     } finally {
-      setLoading(false);
+      setLoading(false); // Reset loading state after sign-out attempt
     }
   };
   
   const unlocalizedPathname = pathname.replace(`/${currentLocale}`, '') || '/';
-  if (loading && !unlocalizedPathname.startsWith('/login') && unlocalizedPathname !== '/') {
+  if (loading && !isSigningIn && !unlocalizedPathname.startsWith('/login') && unlocalizedPathname !== '/') {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <LoadingSpinner size="lg" />

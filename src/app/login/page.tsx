@@ -2,8 +2,7 @@
 "use client";
 
 import { useEffect } from 'react';
-import { useRouter as useNextRouter } from 'next/navigation'; // Keep for initial non-locale router if needed
-import { useRouter } from 'next-international/navigation';
+import { useRouter } from 'next-international/client'; 
 import { useCurrentLocale, useI18n } from '@/lib/i18n/client';
 import { SignInButton } from '@/components/auth/SignInButton';
 import { useAuth } from '@/components/auth/AuthProvider';

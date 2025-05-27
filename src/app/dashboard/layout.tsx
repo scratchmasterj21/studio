@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect } from 'react';
-import { useRouter } from 'next-international/navigation';
+import { useRouter } from 'next-international/client'; 
 import { usePathname as useNextPathname } from 'next/navigation';
 import { useCurrentLocale, useI18n } from '@/lib/i18n/client';
 import { useAuth } from '@/components/auth/AuthProvider';

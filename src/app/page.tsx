@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect } from 'react';
-import { useRouter } from 'next-international/navigation';
+import { useRouter } from 'next-international/client'; 
 import { useAuth } from '@/components/auth/AuthProvider';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 import { useI18n, useCurrentLocale } from '@/lib/i18n/client';
