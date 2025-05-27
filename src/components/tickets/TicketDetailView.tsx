@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState } from 'react';
@@ -18,8 +19,9 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { Label } from "@/components/ui/label"; // Added import
 import { useToast } from '@/hooks/use-toast';
-import { addMessageToTicket, updateTicketStatus, assignTicket } from '@/lib/firestore';
+import { addMessageToTicket, updateTicketStatus, assignTicket, getUserProfile } from '@/lib/firestore';
 import TicketStatusBadge from './TicketStatusBadge';
 import TicketPriorityIcon from './TicketPriorityIcon';
 import { Clock, User, MessageSquare, Paperclip, Send, Edit3, Users, CheckCircle } from 'lucide-react';
@@ -64,19 +66,20 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
 
       // Email Notification Logic
       let recipients: { email: string, name?: string }[] = [];
+      
       // Notify ticket creator if not the current user
-      if (ticket.createdBy !== currentUserProfile.uid && ticket.createdByName) { // Assuming createdBy has an email we can fetch
-        const creatorProfile = await_get_user_profile_somehow(ticket.createdBy); // Placeholder: you'd need a way to get email
-        if (creatorProfile?.email) recipients.push({ email: creatorProfile.email, name: ticket.createdByName });
+      if (ticket.createdBy !== currentUserProfile.uid && ticket.createdByName) { 
+        const creatorProfile = await getUserProfile(ticket.createdBy); 
+        if (creatorProfile?.email) recipients.push({ email: creatorProfile.email, name: creatorProfile.displayName || ticket.createdByName });
       }
       // Notify assigned worker if not the current user
       if (ticket.assignedTo && ticket.assignedTo !== currentUserProfile.uid && ticket.assignedToName) {
-        const workerProfile = await_get_user_profile_somehow(ticket.assignedTo); // Placeholder
-        if (workerProfile?.email) recipients.push({ email: workerProfile.email, name: ticket.assignedToName });
+        const workerProfile = await getUserProfile(ticket.assignedTo); 
+        if (workerProfile?.email) recipients.push({ email: workerProfile.email, name: workerProfile.displayName || ticket.assignedToName });
       }
       // Deduplicate recipients based on email
       recipients = recipients.filter((r, index, self) =>
-        index === self.findIndex((t) => t.email === r.email)
+        index === self.findIndex((t) => t.email === r.email && r.email != null) // Ensure email is not null
       );
       
       if (recipients.length > 0) {
@@ -85,8 +88,8 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
            subject: `Update on Ticket: ${ticket.title}`,
            htmlContent: `
              <p>There's a new reply on ticket <strong>${ticket.title}</strong> (ID: ${ticket.id})</p>
-             <p><strong>${currentUserProfile.displayName || 'User'}</strong> said: ${values.message}</p>
-             <p>View the ticket <a href="${window.location.origin}/dashboard/tickets/${ticket.id}">here</a>.</p>
+             <p><strong>${currentUserProfile.displayName || currentUserProfile.email || 'User'}</strong> said: ${values.message}</p>
+             <p>View the ticket <a href="${typeof window !== 'undefined' ? window.location.origin : ''}/dashboard/tickets/${ticket.id}">here</a>.</p>
            `,
          });
       }
@@ -99,16 +102,6 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
     }
   };
   
-  // Placeholder for fetching user profiles (needed for email notifications)
-  async function await_get_user_profile_somehow(userId: string): Promise<{email: string | null, displayName: string | null} | null> {
-    // In a real app, this would fetch from Firestore or a cache
-    // For now, returning null or a mock structure
-    // This is important for actual email sending.
-    // For this exercise, we'll assume this function might return null if profile not found.
-    // You might need to implement `getUserProfile(userId)` in `lib/firestore.ts` and call it here.
-    return null; 
-  }
-
 
   const handleStatusChange = async (newStatus: TicketStatus) => {
     setIsUpdatingStatus(true);
@@ -118,12 +111,12 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
 
       // Email Notification Logic
       if (ticket.createdBy !== currentUserProfile.uid && ticket.createdByName) {
-        const creatorProfile = await_get_user_profile_somehow(ticket.createdBy);
+        const creatorProfile = await getUserProfile(ticket.createdBy);
         if (creatorProfile?.email) {
           await sendEmailViaBrevo({
-            to: [{ email: creatorProfile.email, name: ticket.createdByName }],
+            to: [{ email: creatorProfile.email, name: creatorProfile.displayName || ticket.createdByName }],
             subject: `Ticket Status Updated: ${ticket.title}`,
-            htmlContent: `<p>The status of your ticket <strong>${ticket.title}</strong> has been updated to <strong>${newStatus}</strong>.</p><p>View the ticket <a href="${window.location.origin}/dashboard/tickets/${ticket.id}">here</a>.</p>`,
+            htmlContent: `<p>The status of your ticket <strong>${ticket.title}</strong> has been updated to <strong>${newStatus}</strong>.</p><p>View the ticket <a href="${typeof window !== 'undefined' ? window.location.origin : ''}/dashboard/tickets/${ticket.id}">here</a>.</p>`,
           });
         }
       }
@@ -142,22 +135,22 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
       toast({ title: "Ticket Assigned", description: `Ticket assigned to ${workerName}.` });
 
       // Email Notification Logic for assignment
-      const workerProfile = await_get_user_profile_somehow(workerId);
+      const workerProfile = await getUserProfile(workerId);
       if (workerProfile?.email) {
         await sendEmailViaBrevo({
-          to: [{ email: workerProfile.email, name: workerName }],
+          to: [{ email: workerProfile.email, name: workerProfile.displayName || workerName }],
           subject: `New Ticket Assigned to You: ${ticket.title}`,
-          htmlContent: `<p>You have been assigned a new ticket: <strong>${ticket.title}</strong> (ID: ${ticket.id}).</p><p>View the ticket <a href="${window.location.origin}/dashboard/tickets/${ticket.id}">here</a>.</p>`,
+          htmlContent: `<p>You have been assigned a new ticket: <strong>${ticket.title}</strong> (ID: ${ticket.id}).</p><p>View the ticket <a href="${typeof window !== 'undefined' ? window.location.origin : ''}/dashboard/tickets/${ticket.id}">here</a>.</p>`,
         });
       }
       // Also notify ticket creator
        if (ticket.createdBy !== currentUserProfile.uid && ticket.createdByName) {
-        const creatorProfile = await_get_user_profile_somehow(ticket.createdBy);
+        const creatorProfile = await getUserProfile(ticket.createdBy);
         if (creatorProfile?.email) {
           await sendEmailViaBrevo({
-            to: [{ email: creatorProfile.email, name: ticket.createdByName }],
+            to: [{ email: creatorProfile.email, name: creatorProfile.displayName || ticket.createdByName }],
             subject: `Ticket Assigned: ${ticket.title}`,
-            htmlContent: `<p>Your ticket <strong>${ticket.title}</strong> has been assigned to ${workerName}.</p><p>View the ticket <a href="${window.location.origin}/dashboard/tickets/${ticket.id}">here</a>.</p>`,
+            htmlContent: `<p>Your ticket <strong>${ticket.title}</strong> has been assigned to ${workerName}.</p><p>View the ticket <a href="${typeof window !== 'undefined' ? window.location.origin : ''}/dashboard/tickets/${ticket.id}">here</a>.</p>`,
           });
         }
       }
@@ -321,3 +314,5 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
   );
 }
 
+
+      

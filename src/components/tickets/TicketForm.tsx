@@ -1,3 +1,4 @@
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -23,7 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { createTicket } from "@/lib/firestore";
+import { createTicket, getUserProfile } from "@/lib/firestore"; // Added getUserProfile
 import type { TicketCategory, TicketPriority, UserProfile } from "@/lib/types";
 import { ticketCategories, ticketPriorities } from "@/config/site";
 import { useRouter } from "next/navigation";
@@ -75,22 +76,21 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
         description: `Your ticket "${values.title}" has been submitted.`,
       });
 
-      // Send email notification (client-side - see warning in brevo.ts)
+      // Send email notification
       if (userProfile.email) {
          await sendEmailViaBrevo({
            to: [{ email: userProfile.email, name: userProfile.displayName || userProfile.email }],
            subject: `FireDesk Ticket Created: ${values.title}`,
-           htmlContent: `<h1>Ticket Created: ${values.title}</h1><p>Your ticket has been successfully created with ID: ${ticketId}. You can view it <a href="${window.location.origin}/dashboard/tickets/${ticketId}">here</a>.</p>`,
+           htmlContent: `<h1>Ticket Created: ${values.title}</h1><p>Your ticket has been successfully created with ID: ${ticketId}. You can view it <a href="${typeof window !== 'undefined' ? window.location.origin : ''}/dashboard/tickets/${ticketId}">here</a>.</p>`,
          });
       }
-      // Notify admin (example - this should be a configurable admin email)
-      // This is just illustrative and would need a proper admin email configuration.
+      
       const adminEmail = process.env.NEXT_PUBLIC_ADMIN_EMAIL_NOTIFICATIONS;
       if (adminEmail) {
         await sendEmailViaBrevo({
-          to: [{ email: adminEmail }],
-          subject: `New FireDesk Ticket: ${values.title}`,
-          htmlContent: `<h1>New Ticket Created: ${values.title}</h1><p>A new ticket has been created by ${userProfile.displayName} (${userProfile.email}). Ticket ID: ${ticketId}.</p><p>Details: ${values.description}</p>`,
+          to: [{ email: adminEmail }], // Assuming adminEmail is just one email
+          subject: `New FireDesk Ticket: ${values.title} (ID: ${ticketId})`,
+          htmlContent: `<h1>New Ticket Created: ${values.title}</h1><p>A new ticket has been created by ${userProfile.displayName || userProfile.email} (User ID: ${userProfile.uid}).</p><p>Ticket ID: ${ticketId}</p><p>Description: ${values.description}</p><p>View the ticket <a href="${typeof window !== 'undefined' ? window.location.origin : ''}/dashboard/tickets/${ticketId}">here</a>.</p>`,
         });
       }
 
@@ -204,3 +204,6 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
     </Form>
   );
 }
+
+
+      
