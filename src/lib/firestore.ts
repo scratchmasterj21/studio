@@ -67,6 +67,33 @@ export const getAllUsersByRole = (role: UserRole, callback: (users: UserProfile[
   });
 };
 
+export const getAllUsers = (callback: (users: UserProfile[]) => void): Unsubscribe => {
+  const usersRef = collection(db, 'users');
+  const q = query(usersRef, orderBy('displayName', 'asc')); // Order by display name
+
+  return onSnapshot(q, (snapshot: QuerySnapshot<DocumentData>) => {
+    const users = snapshot.docs.map(docSnap => {
+      const data = docSnap.data();
+      // Ensure createdAt is handled correctly, Firestore Timestamps are crucial
+      let createdAtTimestamp = data.createdAt;
+      if (createdAtTimestamp && !(createdAtTimestamp instanceof Timestamp)) {
+        // If it's a plain object (e.g. from serverTimestamp() before write completion on client cache), convert
+        // This is a fallback, ideally data is always consistent
+        createdAtTimestamp = new Timestamp(createdAtTimestamp.seconds, createdAtTimestamp.nanoseconds);
+      } else if (!createdAtTimestamp) {
+        createdAtTimestamp = Timestamp.now(); // Fallback if missing, though should not happen
+      }
+      
+      return {
+        ...data,
+        uid: docSnap.id,
+        createdAt: createdAtTimestamp,
+      } as UserProfile;
+    });
+    callback(users);
+  });
+};
+
 
 // Ticket Functions
 export const createTicket = async (ticketData: Omit<Ticket, 'id' | 'createdAt' | 'updatedAt' | 'messages' | 'createdByName'>, createdByProfile: UserProfile): Promise<string> => {

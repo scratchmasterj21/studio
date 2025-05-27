@@ -1,3 +1,4 @@
+
 "use client";
 
 import Link from 'next/link';
@@ -15,7 +16,8 @@ import {
 import { useAuth } from '@/components/auth/AuthProvider';
 import { SignOutButton } from '@/components/auth/SignOutButton';
 import { siteConfig } from '@/config/site';
-import { LayoutGrid, PlusCircle, Ticket as TicketIcon, UserCircle } from 'lucide-react'; // Renamed Ticket to TicketIcon to avoid conflict
+import { LayoutGrid, PlusCircle, Ticket as TicketIcon, UserCircle, Users as UsersIcon } from 'lucide-react';
+import type { UserProfile } from '@/lib/types'; // Ensure UserProfile type is imported if not already
 
 interface NavLink {
   href: string;
@@ -27,7 +29,7 @@ interface NavLink {
 const navLinks: NavLink[] = [
   { href: '/dashboard', label: 'Dashboard', icon: <LayoutGrid className="h-4 w-4" />, roles: ['user', 'worker', 'admin'] },
   { href: '/dashboard/tickets/new', label: 'New Ticket', icon: <PlusCircle className="h-4 w-4" />, roles: ['user', 'admin'] },
-  // { href: '/dashboard/admin/users', label: 'Manage Users', icon: <Users className="h-4 w-4" />, roles: ['admin'] }, // Example for future admin features
+  { href: '/dashboard/admin/users', label: 'Manage Users', icon: <UsersIcon className="h-4 w-4" />, roles: ['admin'] },
 ];
 
 export function AppHeader() {
@@ -81,9 +83,10 @@ export function AppHeader() {
               <DropdownMenuSeparator />
               <DropdownMenuGroup>
                 <DropdownMenuItem asChild>
-                  <Link href="/dashboard/profile"> {/* Placeholder for profile page */}
+                  {/* TODO: Create a proper profile page */}
+                  <Link href="/dashboard"> 
                     <UserCircle className="mr-2 h-4 w-4" />
-                    Profile
+                    Profile (TBD)
                   </Link>
                 </DropdownMenuItem>
               </DropdownMenuGroup>
