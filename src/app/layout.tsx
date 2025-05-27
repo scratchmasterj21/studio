@@ -5,8 +5,9 @@ import './globals.css';
 import { AuthProvider } from '@/components/auth/AuthProvider';
 import { Toaster } from '@/components/ui/toaster';
 import { I18nProviderClient } from '@/lib/i18n/client';
-import { getI18n, getCurrentLocale as getCurrentLocaleServer } from '@/lib/i18n/server';
-import { locales, defaultLocale, type Locale } from '@/lib/i18n/settings'; // Import defaultLocale
+import { getCurrentLocale as getCurrentLocaleServer } from '@/lib/i18n/server'; // Renamed for clarity
+import { locales, defaultLocale, type Locale } from '@/lib/i18n/settings';
+import { getI18n } from '@/lib/i18n/server'; // For metadata
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -37,34 +38,31 @@ export const viewport: Viewport = {
 
 export default async function RootLayout({
   children,
-  params, // Use params object directly
+  // params object is still available if needed, but we'll primarily use getCurrentLocaleServer
+  params,
 }: Readonly<{
   children: React.ReactNode;
-  params: { locale?: string }; // Explicitly make locale optional in the params type
+  params: { locale?: string };
 }>) {
-  const paramsLocale = params.locale; // This will be undefined (JS value) if segment is missing, or a string
   let effectiveLocale: Locale;
 
-  if (paramsLocale && locales.includes(paramsLocale as Locale)) {
-    effectiveLocale = paramsLocale as Locale;
+  // Primary source of truth should be what the server middleware has determined.
+  const serverDeterminedLocale = await getCurrentLocaleServer();
+
+  if (locales.includes(serverDeterminedLocale as Locale)) {
+    effectiveLocale = serverDeterminedLocale as Locale;
   } else {
-    // If paramsLocale is undefined, an empty string, or not a valid known locale, 
-    // get it from server context (which should be reliable due to middleware)
-    const serverDeterminedLocale = await getCurrentLocaleServer();
-    if (locales.includes(serverDeterminedLocale as Locale)) {
-      effectiveLocale = serverDeterminedLocale as Locale;
-    } else {
-      // Fallback to defaultLocale if server determination also somehow fails
-      // This case should be rare if middleware is functioning correctly.
-      console.warn(`[RootLayout] Server-determined locale '${serverDeterminedLocale}' not in supported locales. Falling back to default: '${defaultLocale}'.`);
-      effectiveLocale = defaultLocale;
-    }
+    // This is a fallback, should ideally not be hit if middleware is correct
+    console.warn(
+      `[RootLayout] Server-determined locale '${serverDeterminedLocale}' is not in supported locales (${locales.join(', ')}). Falling back to default: '${defaultLocale}'.`
+    );
+    effectiveLocale = defaultLocale;
   }
   
-  // Final safeguard: ensure effectiveLocale is definitely one of the defined locales.
-  // This primarily protects against unexpected values if the above logic had a flaw.
+  // A final sanity check, though the above logic should cover it.
+  // This ensures effectiveLocale is always one of the explicitly defined locales.
   if (!locales.includes(effectiveLocale)) {
-    console.error(`[RootLayout] Critical error: effectiveLocale '${effectiveLocale}' is not a supported locale. Forcing defaultLocale '${defaultLocale}'. This indicates a problem in locale determination logic or middleware.`);
+     console.error(`[RootLayout] Critical fallback: effectiveLocale '${effectiveLocale}' is not a supported locale. Forcing defaultLocale '${defaultLocale}'. This indicates a problem in locale determination logic or middleware.`);
     effectiveLocale = defaultLocale;
   }
   
