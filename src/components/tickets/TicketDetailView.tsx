@@ -546,15 +546,6 @@ ${getStandardFooter()}`,
                     </Card>
                   ))}
                 </div>
-                 {!attachmentLoadErrorOccurred && ticket.attachments && ticket.attachments.length > 0 && (
-                    <Alert variant="default" className="mt-3 text-xs text-muted-foreground p-3 border-dashed">
-                        <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-                        <AlertDescription>
-                            If attachments are not displaying correctly (e.g., errors like "Invalid Argument Authorization" or 403 Forbidden on the URL), please ensure objects in your R2 bucket (especially under the 'uploads/' prefix) are set to **publicly readable**.
-                            You can do this in your Cloudflare R2 bucket settings (Settings tab -> Public access -> Allow). Also, verify your R2 bucket's CORS policy allows GET requests from this application's origin.
-                        </AlertDescription>
-                    </Alert>
-                 )}
               </div>
             )}
 
@@ -723,6 +714,8 @@ ${getStandardFooter()}`,
     </div>
   );
 }
+
+    
 
     
 
