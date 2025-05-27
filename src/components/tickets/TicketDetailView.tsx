@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
-import type { Ticket, UserProfile, TicketStatus, Attachment, Solution } from '@/lib/types'; // Added Solution
+import type { Ticket, UserProfile, TicketStatus, Attachment, Solution } from '@/lib/types';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/form";
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { addMessageToTicket, updateTicketStatus, assignTicket, getUserProfile, deleteTicket, resolveTicket } from '@/lib/firestore'; // Added resolveTicket
+import { addMessageToTicket, updateTicketStatus, assignTicket, getUserProfile, deleteTicket, resolveTicket } from '@/lib/firestore';
 import TicketStatusBadge from './TicketStatusBadge';
 import TicketPriorityIcon from './TicketPriorityIcon';
 import { MessageSquare, Send, Edit3, Languages, Paperclip, Download, Image as ImageIcon, Video as VideoIcon, FileText, AlertTriangle, Trash2, CheckCircle2, Info } from 'lucide-react';
@@ -45,7 +45,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useRouter } from 'next/navigation';
-import ResolveTicketDialog from './ResolveTicketDialog'; // Import the new dialog
+import ResolveTicketDialog from './ResolveTicketDialog';
 
 const messageFormSchema = z.object({
   message: z.string().min(1, "Message cannot be empty.").max(1000, "Message is too long."),
@@ -61,13 +61,18 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
   const { toast } = useToast();
   const router = useRouter();
   const [isSubmittingMessage, setIsSubmittingMessage] = useState(false);
-  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false); // For non-resolve status changes
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [isDeletingTicket, setIsDeletingTicket] = useState(false);
   const [showResolveDialog, setShowResolveDialog] = useState(false);
 
   const [translatedDescription, setTranslatedDescription] = useState<string | null>(null);
   const [isTranslatingDescription, setIsTranslatingDescription] = useState(false);
   const [showOriginalDescription, setShowOriginalDescription] = useState(true);
+
+  const [translatedSolutionText, setTranslatedSolutionText] = useState<string | null>(null);
+  const [isTranslatingSolution, setIsTranslatingSolution] = useState(false);
+  const [showOriginalSolution, setShowOriginalSolution] = useState(true);
+
   const [attachmentLoadErrorOccurred, setAttachmentLoadErrorOccurred] = useState(false);
 
 
@@ -149,10 +154,9 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
   const handleStatusChange = async (newStatus: TicketStatus) => {
     if (newStatus === 'Resolved') {
       setShowResolveDialog(true);
-      return; // Don't proceed with direct status update for "Resolved"
+      return; 
     }
 
-    // For other statuses (Open, In Progress, Closed)
     setIsUpdatingStatus(true);
     try {
       await updateTicketStatus(ticket.id, newStatus);
@@ -163,10 +167,13 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
       const ticketCreatorName = ticket.createdByName || 'User';
       const shortTicketId = ticket.id.substring(0,8);
 
+      console.log(`[EmailDebug] Attempting status change email. Current User: ${currentUserProfile.uid}, Ticket Creator: ${ticket.createdBy}, New Status: ${newStatus}`);
+
+
       if (newStatus === 'Closed') {
         emailSubject = `Your FireDesk Ticket '${ticket.title}' (#${shortTicketId}) Has Been Closed`;
         emailHtmlContent = `<p>Dear ${ticketCreatorName},</p><p>Your ticket <strong>${ticket.title}</strong> (#${shortTicketId}) has been <strong>Closed</strong>.</p><p>We hope your issue was resolved to your satisfaction. If you have any further questions, please feel free to submit a new ticket.</p>${getStandardFooter()}`;
-      } else { // For Open, In Progress
+      } else { 
         emailSubject = `FireDesk Ticket Status Updated: ${ticket.title} (#${shortTicketId}) to ${newStatus}`;
         emailHtmlContent = `<p>Dear ${ticketCreatorName},</p><p>The status of your ticket <strong>${ticket.title}</strong> (#${shortTicketId}) has been updated to <strong>${newStatus}</strong>.</p>${getStandardFooter()}`;
       }
@@ -174,12 +181,20 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
       if (ticket.createdBy !== currentUserProfile.uid) {
         const creatorProfile = await getUserProfile(ticket.createdBy);
         if (creatorProfile?.email) {
-          await sendEmailViaBrevo({
+           console.log(`[EmailDebug] Creator profile found for status change email: ${creatorProfile.email}. Sending email.`);
+          const emailResult = await sendEmailViaBrevo({
             to: [{ email: creatorProfile.email, name: creatorProfile.displayName || ticket.createdByName || 'User' }],
             subject: emailSubject,
             htmlContent: emailHtmlContent,
           });
+          if(!emailResult.success){
+            console.warn("[EmailDebug] Brevo reported an issue sending 'status change' email:", emailResult.message, emailResult.error);
+          }
+        } else {
+           console.log("[EmailDebug] Creator profile or email not found. Skipping status change email.");
         }
+      } else {
+        console.log("[EmailDebug] Current user is ticket creator. Skipping self-notification for status change.");
       }
     } catch (error) {
       console.error("Error updating status:", error);
@@ -190,9 +205,6 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
   };
 
   const handleTicketResolved = async (solutionText: string, solutionAttachments: Attachment[]) => {
-    // This function is called by ResolveTicketDialog upon successful solution submission
-    // The ticket status is already updated to 'Resolved' and solution saved by firestore.resolveTicket
-    // Now, send the email notification.
     const ticketCreatorName = ticket.createdByName || 'User';
     const shortTicketId = ticket.id.substring(0,8);
     const resolverName = currentUserProfile.displayName || currentUserProfile.email || 'Support Agent';
@@ -233,8 +245,6 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
         }
       }
     }
-    // The ticket itself is already updated, so no need to call updateTicketStatus again.
-    // The UI will reflect the new status due to Firestore listener.
   };
 
 
@@ -379,7 +389,43 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
     }
   };
 
+  const handleTranslateSolution = async () => {
+    if (!ticket.solution?.text) return;
+
+    if (!showOriginalSolution) {
+        setShowOriginalSolution(true);
+        return;
+    }
+
+    setIsTranslatingSolution(true);
+    // Basic language detection
+    const isLikelyJapanese = /[\u3000-\u303f\u3040-\u309f\u30a0-\u30ff\uff00-\uff9f\u4e00-\u9faf\u3400-\u4dbf]/.test(ticket.solution.text);
+    const targetLanguage = isLikelyJapanese ? "English" : "Japanese";
+    const sourceLanguage = isLikelyJapanese ? "Japanese" : "English";
+    
+    try {
+      const input: TranslateTextInput = {
+        textToTranslate: ticket.solution.text,
+        targetLanguage: targetLanguage,
+        sourceLanguage: sourceLanguage,
+      };
+      const result = await translateText(input);
+      setTranslatedSolutionText(result.translatedText);
+      setShowOriginalSolution(false); // Show the new translation
+    } catch (error) {
+      console.error("Error translating solution:", error);
+      toast({ title: "Translation Error", description: "Could not translate the solution text.", variant: "destructive" });
+      setTranslatedSolutionText(null);
+      setShowOriginalSolution(true);
+    } finally {
+      setIsTranslatingSolution(false);
+    }
+  };
+
+
   const displayedDescriptionText = showOriginalDescription || !translatedDescription ? ticket.description : translatedDescription;
+  const displayedSolutionText = !ticket.solution?.text ? '' : (showOriginalSolution || !translatedSolutionText ? ticket.solution.text : translatedSolutionText);
+
 
   let translateDescriptionButtonText = "Translate";
   if (isTranslatingDescription) {
@@ -389,6 +435,18 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
     translateDescriptionButtonText = isLikelyJapanese ? "To English" : "To Japanese";
   } else {
     translateDescriptionButtonText = "Show Original";
+  }
+
+  let translateSolutionButtonText = "Translate";
+  if (ticket.solution?.text) {
+    if (isTranslatingSolution) {
+        translateSolutionButtonText = "Translating...";
+    } else if (showOriginalSolution) {
+        const isLikelyJapaneseSolution = /[\u3000-\u303f\u3040-\u309f\u30a0-\u30ff\uff00-\uff9f\u4e00-\u9faf\u3400-\u4dbf]/.test(ticket.solution.text);
+        translateSolutionButtonText = isLikelyJapaneseSolution ? "To English" : "To Japanese";
+    } else {
+        translateSolutionButtonText = "Show Original";
+    }
   }
 
 
@@ -488,7 +546,7 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
                       console.error(`[TicketDetailView] Failed to load video: ${att.url}. Error code: ${errorCode}, Message: ${errorMessage}`);
 
                       let toastDescription = `Could not load video: ${att.name}.`;
-                      if (errorCode === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) { // Code 4
+                      if (errorCode === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) { 
                         toastDescription = `Video format or codec for "${att.name}" is not supported by your browser, or the file might be corrupted. Please try a different video format (e.g., common MP4 H.264). Also ensure the R2 object is publicly readable and the content type is correct (e.g., 'video/mp4').`;
                       } else if (errorMessage.toLowerCase().includes("authorization") || (errorTarget.error && !errorCode)) {
                         toastDescription = `Could not load video: ${att.name}. This often indicates an "Invalid Argument Authorization" or similar access error, meaning the R2 object is private. Please check R2 public access permissions and ensure objects are publicly readable.`;
@@ -543,7 +601,7 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
                   >
                       <Languages className="h-4 w-4 mr-1 sm:mr-2" />
                       <span className="hidden sm:inline">{translateDescriptionButtonText}</span>
-                      <span className="sm:hidden">{isTranslatingDescription ? "..." : <Languages className="h-4 w-4" />}</span>
+                      <span className="sm:hidden">{isTranslatingDescription ? <LoadingSpinner size="sm" /> : <Languages className="h-4 w-4" />}</span>
                   </Button>
                   {isTranslatingDescription && <LoadingSpinner size="sm" className="ml-2 inline-block" />}
                 </div>
@@ -559,14 +617,12 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
                 {ticket.priority || "N/A"} Priority
               </div>
             </div>
-             {attachmentLoadErrorOccurred && (
+            {attachmentLoadErrorOccurred && (
               <Alert variant="destructive" className="mt-4">
                 <AlertTriangle className="h-4 w-4" />
                 <AlertTitle>Attachment Loading Error</AlertTitle>
                 <AlertDescription>
-                  One or more attachments could not be loaded. This often means the files in Cloudflare R2 are not publicly readable.
-                  An "Invalid Argument Authorization" or 403 Forbidden error when trying the URL directly strongly indicates private R2 objects.
-                  Please check your R2 bucket settings (ensure public access is "Allowed") and verify your R2 bucket's CORS policy allows GET requests from this application's origin.
+                  One or more attachments could not be loaded. An "Invalid Argument Authorization" or 403 Forbidden error for the attachment URL typically means the R2 object is private. Please ensure objects in your R2 bucket are set to **publicly readable** in Cloudflare R2 settings (Bucket Settings -&gt; Public access -&gt; Allow). Also, verify your R2 bucket's CORS policy allows GET requests from this application's origin.
                 </AlertDescription>
               </Alert>
             )}
@@ -589,8 +645,26 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
               </CardDescription>
             </CardHeader>
             <CardContent className="pt-4">
-              <Label className="text-xs text-muted-foreground mb-1">Solution Provided:</Label>
-              <p className="whitespace-pre-wrap text-foreground leading-relaxed">{ticket.solution.text}</p>
+              <div className="flex flex-col">
+                <Label className="text-xs text-muted-foreground mb-1">Solution Provided:</Label>
+                <p className="whitespace-pre-wrap text-foreground leading-relaxed flex-grow">{displayedSolutionText}</p>
+                 {ticket.solution.text && (
+                    <div className="mt-2 self-start">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleTranslateSolution}
+                        disabled={isTranslatingSolution}
+                        title={translateSolutionButtonText}
+                    >
+                        <Languages className="h-4 w-4 mr-1 sm:mr-2" />
+                        <span className="hidden sm:inline">{translateSolutionButtonText}</span>
+                        <span className="sm:hidden">{isTranslatingSolution ? <LoadingSpinner size="sm" /> : <Languages className="h-4 w-4" />}</span>
+                    </Button>
+                    {isTranslatingSolution && <LoadingSpinner size="sm" className="ml-2 inline-block" />}
+                    </div>
+                )}
+              </div>
               {renderAttachments(ticket.solution.attachments || [], 'Solution Attachments')}
             </CardContent>
           </Card>
@@ -785,3 +859,5 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
     </div>
   );
 }
+
+    
