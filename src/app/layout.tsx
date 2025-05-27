@@ -35,14 +35,14 @@ export const viewport: Viewport = {
   initialScale: 1,
 }
 
-export default function RootLayout({
+export default async function RootLayout({ // Made this async
   children,
-  params: { locale: paramsLocale } // Renamed to avoid confusion with currentLocale
+  params: { locale: paramsLocale } 
 }: Readonly<{
   children: React.ReactNode;
-  params: { locale: string }; // This type comes from Next.js routing, locale can be undefined for default
+  params: { locale: string }; 
 }>) {
-  const currentLocale = getCurrentLocale(); // This is the resolved locale from next-international
+  const currentLocale = await getCurrentLocale(); // Await the result
   return (
     <html lang={currentLocale} suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
