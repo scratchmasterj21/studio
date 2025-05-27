@@ -9,7 +9,7 @@
  */
 
 import {ai} from '@/ai/genkit';
-import {z} from 'genkit/zod';
+import {z} from 'zod'; // Corrected import path for Zod
 
 const TranslateTextInputSchema = z.object({
   textToTranslate: z.string().describe('The text to be translated.'),
