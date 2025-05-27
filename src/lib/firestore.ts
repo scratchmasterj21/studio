@@ -19,6 +19,7 @@ import {
   type DocumentData,
   type QuerySnapshot,
   type DocumentSnapshot,
+  type FieldValue,
 } from 'firebase/firestore';
 import { db } from './firebase';
 import type { Ticket, TicketMessage, TicketStatus, UserProfile, UserRole, Attachment, Solution } from './types';
@@ -229,10 +230,21 @@ export const onTicketByIdUpdate = (ticketId: string, callback: (ticket: Ticket |
 
 export const updateTicketStatus = async (ticketId: string, status: TicketStatus): Promise<void> => {
   const ticketRef = doc(db, 'tickets', ticketId);
-  await updateDoc(ticketRef, {
+  // Prepare the data for update
+  const updateData: { status: TicketStatus; updatedAt: FieldValue; solution?: Solution | null } = {
     status,
     updatedAt: serverTimestamp(),
-  });
+  };
+
+  // If the new status is 'Open' or 'In Progress', clear any existing solution
+  if (status === 'Open' || status === 'In Progress') {
+    updateData.solution = null;
+  }
+  
+  // If the new status is 'Closed', we don't modify the solution. 
+  // It will retain whatever solution was there when it was 'Resolved'.
+
+  await updateDoc(ticketRef, updateData);
 };
 
 export const resolveTicket = async (
@@ -275,13 +287,31 @@ export const addMessageToTicket = async (ticketId: string, messageData: Omit<Tic
     senderDisplayName: senderProfile.displayName || senderProfile.email || 'Unknown User',
     timestamp: Timestamp.now(), // Use client-side timestamp for messages
   };
-  await updateDoc(ticketRef, {
+
+  // Check if the ticket is currently 'Resolved' or 'Closed'
+  const ticketSnap = await getDoc(ticketRef);
+  const currentTicketData = ticketSnap.data() as Ticket | undefined;
+  let newStatus: TicketStatus | undefined = undefined;
+
+  if (currentTicketData && (currentTicketData.status === 'Resolved' || currentTicketData.status === 'Closed')) {
+    newStatus = 'In Progress'; // Re-open the ticket
+  }
+
+  const updatePayload: any = {
     messages: arrayUnion(newMessage),
     updatedAt: serverTimestamp(),
-  });
+  };
+
+  if (newStatus) {
+    updatePayload.status = newStatus;
+    updatePayload.solution = null; // Clear solution if re-opening
+  }
+
+  await updateDoc(ticketRef, updatePayload);
 };
 
 export const deleteTicket = async (ticketId: string): Promise<void> => {
   const ticketRef = doc(db, 'tickets', ticketId);
   await deleteDoc(ticketRef);
 };
+
