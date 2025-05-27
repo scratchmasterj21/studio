@@ -1,3 +1,4 @@
+
 import {
   addDoc,
   collection,
@@ -83,6 +84,7 @@ export const getAllUsersByRole = (role: UserRole, callback: (users: UserProfile[
 
 export const getAssignableAgents = (callback: (users: UserProfile[]) => void): Unsubscribe => {
   const usersRef = collection(db, 'users');
+  // Query for users whose role is either 'worker' or 'admin'
   const q = query(usersRef, where('role', 'in', ['worker', 'admin']), orderBy('displayName'));
   
   return onSnapshot(q, (snapshot: QuerySnapshot<DocumentData>) => {
@@ -213,10 +215,11 @@ export const addMessageToTicket = async (ticketId: string, messageData: Omit<Tic
     ...messageData,
     id: doc(collection(db, 'tmp')).id, // Generate a client-side ID for the message
     senderDisplayName: senderProfile.displayName || senderProfile.email || 'Unknown User',
-    timestamp: serverTimestamp() as Timestamp,
+    timestamp: Timestamp.now(), // Use client-side timestamp for array elements
   };
   await updateDoc(ticketRef, {
     messages: arrayUnion(newMessage),
-    updatedAt: serverTimestamp(),
+    updatedAt: serverTimestamp(), // This is for the main document update
   });
 };
+
