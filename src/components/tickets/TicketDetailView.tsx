@@ -3,7 +3,7 @@
 
 import { useState } from 'react';
 import { format } from 'date-fns';
-import type { Ticket, UserProfile, TicketStatus } from '@/lib/types'; // Removed TicketMessage as it's not directly used here
+import type { Ticket, UserProfile, TicketStatus } from '@/lib/types';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
@@ -19,17 +19,18 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Label } from "@/components/ui/label";
+import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { addMessageToTicket, updateTicketStatus, assignTicket, getUserProfile } from '@/lib/firestore';
 import TicketStatusBadge from './TicketStatusBadge';
 import TicketPriorityIcon from './TicketPriorityIcon';
-import { MessageSquare, Send, Edit3 } from 'lucide-react'; // Removed unused icons like Clock, User, Paperclip, CheckCircle, Users
+import { MessageSquare, Send, Edit3, Languages } from 'lucide-react';
 import LoadingSpinner from '../common/LoadingSpinner';
 import StatusSelector from './StatusSelector';
 import AssignTicketDialog from './AssignTicketDialog';
 import MessageItem from './MessageItem';
 import { sendEmailViaBrevo } from '@/lib/brevo';
+import { translateText, type TranslateTextInput } from '@/ai/flows/translate-text-flow';
 
 
 const messageFormSchema = z.object({
@@ -47,6 +48,10 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
   const [isSubmittingMessage, setIsSubmittingMessage] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   
+  const [translatedDescription, setTranslatedDescription] = useState<string | null>(null);
+  const [isTranslatingDescription, setIsTranslatingDescription] = useState(false);
+  const [showOriginalDescription, setShowOriginalDescription] = useState(true);
+
   const messageForm = useForm<MessageFormValues>({
     resolver: zodResolver(messageFormSchema),
     defaultValues: { message: "" },
@@ -56,7 +61,7 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
     if (typeof window !== 'undefined') {
       return `${window.location.origin}/dashboard/tickets/${ticket.id}`;
     }
-    return `/dashboard/tickets/${ticket.id}`; // Fallback
+    return `/dashboard/tickets/${ticket.id}`; 
   };
   
   const getStandardFooter = () => `
@@ -237,6 +242,50 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
     }
   };
 
+  const handleTranslateDescription = async () => {
+    if (!ticket.description) return;
+
+    if (!showOriginalDescription) { 
+      setShowOriginalDescription(true);
+      return;
+    }
+
+    setIsTranslatingDescription(true);
+    const isLikelyJapanese = /[\u3000-\u303f\u3040-\u309f\u30a0-\u30ff\uff00-\uff9f\u4e00-\u9faf\u3400-\u4dbf]/.test(ticket.description);
+    const targetLanguage = isLikelyJapanese ? "English" : "Japanese";
+    const sourceLanguage = isLikelyJapanese ? "Japanese" : "English";
+
+    try {
+      const input: TranslateTextInput = {
+        textToTranslate: ticket.description,
+        targetLanguage: targetLanguage,
+        sourceLanguage: sourceLanguage,
+      };
+      const result = await translateText(input);
+      setTranslatedDescription(result.translatedText);
+      setShowOriginalDescription(false); 
+    } catch (error) {
+      console.error("Error translating description:", error);
+      toast({ title: "Translation Error", description: "Could not translate the description.", variant: "destructive" });
+      setTranslatedDescription(null); 
+      setShowOriginalDescription(true); 
+    } finally {
+      setIsTranslatingDescription(false);
+    }
+  };
+
+  const displayedDescriptionText = showOriginalDescription || !translatedDescription ? ticket.description : translatedDescription;
+  
+  let translateDescriptionButtonText = "Translate";
+  if (isTranslatingDescription) {
+    translateDescriptionButtonText = "Translating...";
+  } else if (showOriginalDescription) {
+    const isLikelyJapanese = /[\u3000-\u303f\u3040-\u309f\u30a0-\u30ff\uff00-\uff9f\u4e00-\u9faf\u3400-\u4dbf]/.test(ticket.description);
+    translateDescriptionButtonText = isLikelyJapanese ? "To English" : "To Japanese";
+  } else {
+    translateDescriptionButtonText = "Show Original";
+  }
+
 
   const canManageTicket = currentUserProfile.role === 'admin' || (currentUserProfile.role === 'worker' && ticket.assignedTo === currentUserProfile.uid);
   const lastUpdatedText = ticket.updatedAt && typeof ticket.updatedAt.toDate === 'function' 
@@ -264,7 +313,25 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="whitespace-pre-wrap text-foreground leading-relaxed">{ticket.description}</p>
+            <div className="flex flex-col">
+              <p className="whitespace-pre-wrap text-foreground leading-relaxed flex-grow">{displayedDescriptionText}</p>
+              {ticket.description && (
+                <div className="mt-2 self-start">
+                  <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleTranslateDescription}
+                      disabled={isTranslatingDescription}
+                      title={translateDescriptionButtonText}
+                  >
+                      <Languages className="h-4 w-4 mr-1 sm:mr-2" />
+                      <span className="hidden sm:inline">{translateDescriptionButtonText}</span>
+                      <span className="sm:hidden">{isTranslatingDescription ? "..." : <Languages className="h-4 w-4" />}</span>
+                  </Button>
+                  {isTranslatingDescription && <LoadingSpinner size="sm" className="ml-2 inline-block" />}
+                </div>
+              )}
+            </div>
             <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm">
               <div className="flex items-center">
                 <Badge variant="outline" className="mr-2">{ticket.category}</Badge>
