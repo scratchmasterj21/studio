@@ -21,7 +21,7 @@ import {
   DocumentSnapshot,
 } from 'firebase/firestore';
 import { db } from './firebase';
-import type { Ticket, TicketMessage, TicketStatus, UserProfile, UserRole } from './types';
+import type { Ticket, TicketMessage, TicketStatus, UserProfile, UserRole, Attachment } from './types'; // Added Attachment
 import { ticketStatuses } from '@/config/site';
 
 // User Profile Functions
@@ -61,8 +61,7 @@ export const updateUserRole = async (uid: string, newRole: UserRole): Promise<vo
   try {
     await updateDoc(userRef, {
       role: newRole,
-      // Optionally, add an updatedAt timestamp here if needed for auditing
-      // updatedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
     });
   } catch (error) {
     console.error(`Error updating role for user ${uid} to ${newRole}:`, error);
@@ -77,7 +76,7 @@ export const getAllUsersByRole = (role: UserRole, callback: (users: UserProfile[
   return onSnapshot(q, (snapshot: QuerySnapshot<DocumentData>) => {
     const users = snapshot.docs.map(docSnap => ({
       ...docSnap.data(),
-      uid: docSnap.id, // ensure uid is part of the returned object
+      uid: docSnap.id, 
     } as UserProfile));
     callback(users);
   });
@@ -85,7 +84,6 @@ export const getAllUsersByRole = (role: UserRole, callback: (users: UserProfile[
 
 export const getAssignableAgents = (callback: (users: UserProfile[]) => void): Unsubscribe => {
   const usersRef = collection(db, 'users');
-  // Query for users whose role is either 'worker' or 'admin'
   const q = query(usersRef, where('role', 'in', ['worker', 'admin']), orderBy('displayName'));
 
   return onSnapshot(q, (snapshot: QuerySnapshot<DocumentData>) => {
@@ -100,12 +98,11 @@ export const getAssignableAgents = (callback: (users: UserProfile[]) => void): U
 
 export const getAllUsers = (callback: (users: UserProfile[]) => void): Unsubscribe => {
   const usersRef = collection(db, 'users');
-  const q = query(usersRef, orderBy('displayName', 'asc')); // Order by display name
+  const q = query(usersRef, orderBy('displayName', 'asc')); 
 
   return onSnapshot(q, (snapshot: QuerySnapshot<DocumentData>) => {
     const users = snapshot.docs.map(docSnap => {
       const data = docSnap.data();
-      // Ensure createdAt is handled correctly, Firestore Timestamps are crucial
       let createdAtTimestamp = data.createdAt;
       if (createdAtTimestamp && typeof createdAtTimestamp.toDate !== 'function' && createdAtTimestamp.seconds) {
         createdAtTimestamp = new Timestamp(createdAtTimestamp.seconds, createdAtTimestamp.nanoseconds);
@@ -125,16 +122,23 @@ export const getAllUsers = (callback: (users: UserProfile[]) => void): Unsubscri
 
 
 // Ticket Functions
-export const createTicket = async (ticketData: Omit<Ticket, 'id' | 'createdAt' | 'updatedAt' | 'messages' | 'createdByName'>, createdByProfile: UserProfile): Promise<string> => {
+export const createTicket = async (
+  ticketData: Omit<Ticket, 'id' | 'createdAt' | 'updatedAt' | 'messages' | 'createdByName'> & { attachments?: Attachment[] }, 
+  createdByProfile: UserProfile
+): Promise<string> => {
   const ticketsRef = collection(db, 'tickets');
   const newTicket = {
-    ...ticketData,
+    title: ticketData.title,
+    description: ticketData.description,
+    category: ticketData.category,
+    priority: ticketData.priority,
+    status: 'Open' as TicketStatus,
     createdBy: createdByProfile.uid,
     createdByName: createdByProfile.displayName || createdByProfile.email || 'Unknown User',
-    status: 'Open' as TicketStatus,
     createdAt: serverTimestamp() as Timestamp,
     updatedAt: serverTimestamp() as Timestamp,
     messages: [],
+    attachments: ticketData.attachments || [], // Store attachments
   };
   const docRef = await addDoc(ticketsRef, newTicket);
   return docRef.id;
@@ -151,6 +155,7 @@ const mapDocToTicket = (docSnap: DocumentSnapshot<DocumentData>): Ticket => {
         ...msg,
         timestamp: msg.timestamp && typeof msg.timestamp.toDate === 'function' ? msg.timestamp : (msg.timestamp && msg.timestamp.seconds ? new Timestamp(msg.timestamp.seconds, msg.timestamp.nanoseconds) : Timestamp.now())
     })) || [],
+    attachments: data.attachments || [], // Ensure attachments are mapped
   } as Ticket;
 };
 
@@ -161,10 +166,9 @@ export const onTicketsUpdate = (
   filters?: { status?: TicketStatus | "all", priority?: Ticket['priority'] | "all" }
 ): Unsubscribe => {
   const ticketsRef = collection(db, 'tickets');
-  let qConstraints = [orderBy('updatedAt', 'desc')]; // Start with ordering
+  let qConstraints: any[] = [orderBy('updatedAt', 'desc')]; 
 
   if (userProfile.role === 'admin') {
-    // No UID-based filtering for admin, they see all.
     if (filters?.status && filters.status !== "all") {
       qConstraints.push(where('status', '==', filters.status));
     }
@@ -173,7 +177,7 @@ export const onTicketsUpdate = (
     }
   } else if (userProfile.role === 'worker') {
     qConstraints.push(where('assignedTo', '==', userProfile.uid));
-  } else { // 'user'
+  } else { 
     qConstraints.push(where('createdBy', '==', userProfile.uid));
   }
 
@@ -205,7 +209,7 @@ export const assignTicket = async (ticketId: string, workerId: string, workerNam
   await updateDoc(ticketRef, {
     assignedTo: workerId,
     assignedToName: workerName,
-    status: 'In Progress',
+    status: 'In Progress', // Automatically set to In Progress when assigned
     updatedAt: serverTimestamp(),
   });
 };
@@ -214,12 +218,14 @@ export const addMessageToTicket = async (ticketId: string, messageData: Omit<Tic
   const ticketRef = doc(db, 'tickets', ticketId);
   const newMessage: TicketMessage = {
     ...messageData,
-    id: doc(collection(db, 'tmp')).id,
+    id: doc(collection(db, 'tmp')).id, 
     senderDisplayName: senderProfile.displayName || senderProfile.email || 'Unknown User',
-    timestamp: Timestamp.now(), // Use client-side timestamp for messages in arrayUnion
+    timestamp: Timestamp.now(), // Use client-side timestamp for arrayUnion consistency
   };
   await updateDoc(ticketRef, {
     messages: arrayUnion(newMessage),
     updatedAt: serverTimestamp(),
   });
 };
+
+// Removed onTicketStatsUpdate function as per previous request

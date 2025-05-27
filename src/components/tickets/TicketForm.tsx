@@ -24,13 +24,21 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { createTicket, getUserProfile } from "@/lib/firestore";
-import type { TicketCategory, TicketPriority, UserProfile } from "@/lib/types";
+import { createTicket } from "@/lib/firestore";
+import type { TicketCategory, TicketPriority, UserProfile, Attachment } from "@/lib/types";
 import { ticketCategories, ticketPriorities } from "@/config/site";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter } from 'next/navigation';
+import { useState, useRef } from "react";
 import LoadingSpinner from "../common/LoadingSpinner";
 import { sendEmailViaBrevo } from "@/lib/brevo";
+import { Progress } from "@/components/ui/progress";
+import { UploadCloud, FileText, Image as ImageIcon, Video, Trash2, AlertCircle } from "lucide-react";
+import { v4 as uuidv4 } from 'uuid';
+import { cn } from "@/lib/utils";
+
+const MAX_FILES = 5;
+const MAX_FILE_SIZE_MB = 25; // Max 25MB per file
+const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
 const ticketFormSchema = z.object({
   title: z.string().min(5, "Title must be at least 5 characters.").max(100, "Title must be 100 characters or less."),
@@ -41,6 +49,15 @@ const ticketFormSchema = z.object({
 
 type TicketFormValues = z.infer<typeof ticketFormSchema>;
 
+interface UploadableFile {
+  id: string;
+  file: File;
+  progress: number;
+  status: 'pending' | 'uploading' | 'success' | 'error';
+  error?: string;
+  uploadedAttachment?: Attachment; // Stores R2 details on success
+}
+
 interface TicketFormProps {
   userProfile: UserProfile;
 }
@@ -48,7 +65,9 @@ interface TicketFormProps {
 export default function TicketForm({ userProfile }: TicketFormProps) {
   const { toast } = useToast();
   const router = useRouter();
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSubmittingMainForm, setIsSubmittingMainForm] = useState(false);
+  const [uploadableFiles, setUploadableFiles] = useState<UploadableFile[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const form = useForm<TicketFormValues>({
     resolver: zodResolver(ticketFormSchema),
@@ -60,12 +79,123 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
     },
   });
 
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+    if (uploadableFiles.length + files.length > MAX_FILES) {
+      toast({
+        title: "Too many files",
+        description: `You can upload a maximum of ${MAX_FILES} files.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const newUploadableFiles: UploadableFile[] = files.map(file => {
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        toast({
+          title: "File too large",
+          description: `${file.name} exceeds the ${MAX_FILE_SIZE_MB}MB size limit.`,
+          variant: "destructive",
+        });
+        return null; // We'll filter this out
+      }
+      return {
+        id: uuidv4(),
+        file,
+        progress: 0,
+        status: 'pending' as const,
+      };
+    }).filter(Boolean) as UploadableFile[];
+
+    setUploadableFiles(prev => [...prev, ...newUploadableFiles]);
+    
+    // Automatically start uploading new files
+    newUploadableFiles.forEach(uf => handleFileUpload(uf.id));
+
+    // Clear the file input for next selection
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const handleRemoveFile = (fileId: string) => {
+    setUploadableFiles(prev => prev.filter(f => f.id !== fileId));
+    // If file was uploading, we might want to try and cancel it, but that's complex.
+    // For now, just removing from list. It won't be submitted.
+  };
+
+  const handleFileUpload = async (fileId: string) => {
+    const uploadableFile = uploadableFiles.find(uf => uf.id === fileId);
+    if (!uploadableFile || uploadableFile.status === 'uploading' || uploadableFile.status === 'success') return;
+
+    const { file } = uploadableFile;
+
+    setUploadableFiles(prev => prev.map(uf => uf.id === fileId ? { ...uf, status: 'uploading', progress: 0 } : uf));
+
+    try {
+      // 1. Get presigned URL
+      const presignedUrlResponse = await fetch(`/api/upload/presigned-url?filename=${encodeURIComponent(file.name)}&contentType=${encodeURIComponent(file.type)}`);
+      if (!presignedUrlResponse.ok) {
+        const errorData = await presignedUrlResponse.json();
+        throw new Error(errorData.error || 'Failed to get presigned URL');
+      }
+      const { presignedUrl, fileKey, publicUrl, bucket } = await presignedUrlResponse.json();
+
+      // 2. Upload file to R2 using PUT
+      const uploadResponse = await fetch(presignedUrl, {
+        method: 'PUT',
+        body: file,
+        headers: {
+          'Content-Type': file.type,
+        },
+        // Note: For progress, fetch doesn't directly support it.
+        // For real progress, XMLHttpRequest or a library like Axios is needed.
+        // We'll simulate progress completion here.
+      });
+
+      if (!uploadResponse.ok) {
+        throw new Error(`Upload failed with status: ${uploadResponse.status}`);
+      }
+      
+      // For demo purposes, set progress to 100 after fetch 'completes'
+      setUploadableFiles(prev => prev.map(uf => uf.id === fileId ? { 
+        ...uf, 
+        progress: 100, 
+        status: 'success',
+        uploadedAttachment: {
+          id: uuidv4(), // This ID is for Firestore array elements
+          name: file.name,
+          url: publicUrl,
+          type: file.type,
+          size: file.size,
+          fileKey: fileKey,
+        }
+      } : uf));
+
+    } catch (error: any) {
+      console.error("Error uploading file:", file.name, error);
+      setUploadableFiles(prev => prev.map(uf => uf.id === fileId ? { ...uf, status: 'error', error: error.message || 'Upload failed' } : uf));
+      toast({
+        title: `Upload Error: ${file.name}`,
+        description: error.message || "Failed to upload file.",
+        variant: "destructive",
+      });
+    }
+  };
+
+
   async function onSubmit(values: TicketFormValues) {
-    setIsSubmitting(true);
+    setIsSubmittingMainForm(true);
+
+    const successfulUploads = uploadableFiles
+      .filter(uf => uf.status === 'success' && uf.uploadedAttachment)
+      .map(uf => uf.uploadedAttachment!);
+
     try {
       const ticketData = {
         ...values,
         createdBy: userProfile.uid,
+        attachments: successfulUploads, // Add attachments here
       };
       
       const ticketId = await createTicket(ticketData, userProfile);
@@ -83,35 +213,34 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
         </p>
       `;
 
-      // Send email notification to user
       if (userProfile.email) {
          await sendEmailViaBrevo({
            to: [{ email: userProfile.email, name: userProfile.displayName || userProfile.email }],
-           subject: `FireDesk Ticket Created: ${values.title} (#${ticketId})`,
+           subject: `FireDesk Ticket Created: ${values.title} (#${ticketId.substring(0,8)})`,
            htmlContent: `
              <h1>Ticket Created: ${values.title}</h1>
              <p>Dear ${userProfile.displayName || 'User'},</p>
-             <p>Your support ticket has been successfully created with ID: <strong>#${ticketId}</strong>.</p>
+             <p>Your support ticket has been successfully created with ID: <strong>#${ticketId.substring(0,8)}</strong>.</p>
              <p><strong>Title:</strong> ${values.title}</p>
              <p><strong>Description:</strong> ${values.description.replace(/\n/g, '<br>')}</p>
              <p><strong>Category:</strong> ${values.category}</p>
              <p><strong>Priority:</strong> ${values.priority}</p>
+             ${successfulUploads.length > 0 ? `<p><strong>Attachments:</strong> ${successfulUploads.map(att => att.name).join(', ')}</p>` : ''}
              <p>We will get back to you as soon as possible.</p>
              ${standardFooter}
            `,
          });
       }
       
-      // Send email notification to admin
       const adminEmail = process.env.NEXT_PUBLIC_ADMIN_EMAIL_NOTIFICATIONS;
       if (adminEmail) {
         await sendEmailViaBrevo({
           to: [{ email: adminEmail }],
-          subject: `New FireDesk Ticket: ${values.title} by ${userProfile.displayName || userProfile.email} (#${ticketId})`,
+          subject: `New FireDesk Ticket: ${values.title} by ${userProfile.displayName || userProfile.email} (#${ticketId.substring(0,8)})`,
           htmlContent: `
             <h1>New Ticket Submission</h1>
             <p>A new support ticket has been created by <strong>${userProfile.displayName || userProfile.email}</strong> (User ID: ${userProfile.uid}).</p>
-            <p><strong>Ticket ID:</strong> #${ticketId}</p>
+            <p><strong>Ticket ID:</strong> #${ticketId.substring(0,8)}</p>
             <p><strong>Title:</strong> ${values.title}</p>
             <p><strong>Description:</strong></p>
             <div style="padding: 10px; border-left: 3px solid #eee; margin: 10px 0;">
@@ -119,6 +248,7 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
             </div>
             <p><strong>Category:</strong> ${values.category}</p>
             <p><strong>Priority:</strong> ${values.priority}</p>
+            ${successfulUploads.length > 0 ? `<p><strong>Attachments:</strong> ${successfulUploads.map(att => `<a href="${att.url}">${att.name}</a>`).join(', ')}</p>` : ''}
             ${standardFooter}
           `,
         });
@@ -132,9 +262,21 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
         description: "Failed to create ticket. Please try again.",
         variant: "destructive",
       });
-      setIsSubmitting(false);
+    } finally {
+      setIsSubmittingMainForm(false);
     }
   }
+  
+  const getFileIcon = (fileType: string) => {
+    if (fileType.startsWith("image/")) return <ImageIcon className="h-5 w-5 text-primary" />;
+    if (fileType.startsWith("video/")) return <Video className="h-5 w-5 text-primary" />;
+    return <FileText className="h-5 w-5 text-muted-foreground" />;
+  };
+
+  const isUploading = uploadableFiles.some(f => f.status === 'uploading');
+  const hasPendingUploads = uploadableFiles.some(f => f.status === 'pending' || f.status === 'uploading');
+  const hasUploadErrors = uploadableFiles.some(f => f.status === 'error');
+
 
   return (
     <Form {...form}>
@@ -175,6 +317,96 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
             </FormItem>
           )}
         />
+
+        {/* File Upload Section */}
+        <FormItem>
+          <FormLabel>Attachments (Optional)</FormLabel>
+          <FormControl>
+            <div className="flex flex-col gap-4 rounded-lg border border-dashed border-input p-6">
+              <div 
+                className="flex flex-col items-center justify-center text-center cursor-pointer"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <UploadCloud className="h-12 w-12 text-muted-foreground mb-2" />
+                <p className="text-sm text-muted-foreground">
+                  Drag & drop files here, or click to select.
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Up to {MAX_FILES} files, {MAX_FILE_SIZE_MB}MB each. Images & videos accepted.
+                </p>
+                <Input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*,video/*"
+                  multiple
+                  onChange={handleFileChange}
+                  className="hidden"
+                  disabled={uploadableFiles.length >= MAX_FILES || isSubmittingMainForm}
+                />
+              </div>
+            </div>
+          </FormControl>
+           <FormDescription>
+             Attach screenshots, videos, or logs to help explain the issue.
+           </FormDescription>
+          <FormMessage /> {/* For general file input errors if any */}
+        </FormItem>
+        
+        {uploadableFiles.length > 0 && (
+          <div className="space-y-3 rounded-md border p-4">
+            <h4 className="text-sm font-medium">Selected Files:</h4>
+            {uploadableFiles.map(uf => (
+              <div key={uf.id} className="flex items-center justify-between gap-3 p-2 rounded-md hover:bg-muted/50">
+                <div className="flex items-center gap-2 overflow-hidden">
+                  {getFileIcon(uf.file.type)}
+                  <span className="text-sm truncate" title={uf.file.name}>{uf.file.name}</span>
+                  <span className="text-xs text-muted-foreground whitespace-nowrap">
+                    ({(uf.file.size / 1024 / 1024).toFixed(2)} MB)
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {uf.status === 'uploading' && (
+                    <div className="w-20">
+                       <Progress value={uf.progress} className="h-2" />
+                    </div>
+                  )}
+                  {uf.status === 'success' && <span className="text-xs text-green-600">Uploaded</span>}
+                  {uf.status === 'error' && (
+                    <div className="flex items-center gap-1 text-xs text-destructive" title={uf.error}>
+                      <AlertCircle className="h-4 w-4"/> Error 
+                    </div>
+                  )}
+                  {(uf.status === 'pending' || uf.status === 'error') && (
+                     <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      onClick={() => handleFileUpload(uf.id)}
+                      disabled={uf.status === 'uploading'}
+                      title="Retry Upload"
+                    >
+                      <UploadCloud className="h-4 w-4" />
+                    </Button>
+                  )}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-destructive hover:text-destructive"
+                    onClick={() => handleRemoveFile(uf.id)}
+                    disabled={uf.status === 'uploading' && uf.progress > 0 && uf.progress < 100}
+                    title="Remove File"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <FormField
             control={form.control}
@@ -182,7 +414,7 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Category</FormLabel>
-                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isSubmittingMainForm || isUploading}>
                   <FormControl>
                     <SelectTrigger>
                       <SelectValue placeholder="Select a category" />
@@ -206,7 +438,7 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Priority</FormLabel>
-                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isSubmittingMainForm || isUploading}>
                   <FormControl>
                     <SelectTrigger>
                       <SelectValue placeholder="Select a priority level" />
@@ -225,10 +457,15 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
             )}
           />
         </div>
-        <Button type="submit" disabled={isSubmitting} className="w-full sm:w-auto">
-          {isSubmitting ? <LoadingSpinner size="sm" className="mr-2" /> : null}
-          Submit Ticket
+        <Button 
+          type="submit" 
+          disabled={isSubmittingMainForm || isUploading || hasUploadErrors} 
+          className="w-full sm:w-auto"
+        >
+          {(isSubmittingMainForm || isUploading) && <LoadingSpinner size="sm" className="mr-2" />}
+          {isUploading ? "Uploading files..." : isSubmittingMainForm ? "Submitting..." : "Submit Ticket"}
         </Button>
+        {hasUploadErrors && <p className="text-sm text-destructive">Some files failed to upload. Please remove them or retry.</p>}
       </form>
     </Form>
   );

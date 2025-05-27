@@ -1,3 +1,4 @@
+
 import type { Timestamp } from 'firebase/firestore';
 
 export type UserRole = 'user' | 'admin' | 'worker';
@@ -24,6 +25,15 @@ export interface TicketMessage {
   timestamp: Timestamp;
 }
 
+export interface Attachment {
+  id: string; // A unique ID for the attachment, e.g., uuid
+  name: string;
+  url: string; // Publicly accessible URL from R2
+  type: string; // MIME type
+  size: number; // Size in bytes
+  fileKey: string; // Key in the R2 bucket
+}
+
 export interface Ticket {
   id:string;
   title: string;
@@ -38,4 +48,14 @@ export interface Ticket {
   createdAt: Timestamp;
   updatedAt: Timestamp;
   messages: TicketMessage[];
+  attachments?: Attachment[]; // Added for file uploads
 }
+
+// Removed TicketStats as per previous request
+// export interface TicketStats {
+//   totalTickets: number;
+//   openTickets: number;
+//   inProgressTickets: number;
+//   resolvedTickets: number;
+//   closedTickets: number;
+// }

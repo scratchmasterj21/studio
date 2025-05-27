@@ -3,7 +3,7 @@
 
 import { useState } from 'react';
 import { format } from 'date-fns';
-import type { Ticket, UserProfile, TicketStatus } from '@/lib/types';
+import type { Ticket, UserProfile, TicketStatus, Attachment } from '@/lib/types';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
@@ -24,13 +24,14 @@ import { useToast } from '@/hooks/use-toast';
 import { addMessageToTicket, updateTicketStatus, assignTicket, getUserProfile } from '@/lib/firestore';
 import TicketStatusBadge from './TicketStatusBadge';
 import TicketPriorityIcon from './TicketPriorityIcon';
-import { MessageSquare, Send, Edit3, Languages } from 'lucide-react';
+import { MessageSquare, Send, Edit3, Languages, Paperclip, Download, Image as ImageIcon, Video as VideoIcon, FileText } from 'lucide-react';
 import LoadingSpinner from '../common/LoadingSpinner';
 import StatusSelector from './StatusSelector';
 import AssignTicketDialog from './AssignTicketDialog';
 import MessageItem from './MessageItem';
 import { sendEmailViaBrevo } from '@/lib/brevo';
 import { translateText, type TranslateTextInput } from '@/ai/flows/translate-text-flow';
+import NextImage from 'next/image';
 
 
 const messageFormSchema = z.object({
@@ -220,7 +221,7 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
           `,
         });
       }
-       if (ticket.createdBy !== currentUserProfile.uid) {
+       if (ticket.createdBy !== currentUserProfile.uid && ticket.createdBy !== workerId) { // Don't notify creator if they are the assignee
         const creatorProfile = await getUserProfile(ticket.createdBy);
         if (creatorProfile?.email) {
           await sendEmailViaBrevo({
@@ -298,6 +299,12 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
     ? format(ticket.createdAt.toDate(), 'MMM d, yyyy')
     : 'N/A';
 
+  const getAttachmentIcon = (type: string) => {
+    if (type.startsWith('image/')) return <ImageIcon className="h-5 w-5 text-primary" />;
+    if (type.startsWith('video/')) return <VideoIcon className="h-5 w-5 text-primary" />;
+    return <FileText className="h-5 w-5 text-muted-foreground" />;
+  };
+
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -314,6 +321,7 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
           </CardHeader>
           <CardContent>
             <div className="flex flex-col">
+              <Label className="text-xs text-muted-foreground mb-1">Description</Label>
               <p className="whitespace-pre-wrap text-foreground leading-relaxed flex-grow">{displayedDescriptionText}</p>
               {ticket.description && (
                 <div className="mt-2 self-start">
@@ -342,9 +350,72 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
                 {ticket.priority} Priority
               </div>
             </div>
+
+            {/* Attachments Section */}
+            {ticket.attachments && ticket.attachments.length > 0 && (
+              <div className="mt-6 pt-4 border-t">
+                <h3 className="text-md font-semibold mb-3 flex items-center">
+                  <Paperclip className="h-5 w-5 mr-2 text-muted-foreground" />
+                  Attachments ({ticket.attachments.length})
+                </h3>
+                <div className="space-y-3">
+                  {ticket.attachments.map((att) => (
+                    <Card key={att.id} className="p-3 shadow-sm bg-muted/30">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 overflow-hidden">
+                          {getAttachmentIcon(att.type)}
+                          <div className="flex flex-col overflow-hidden">
+                            <span className="text-sm font-medium truncate" title={att.name}>
+                              {att.name}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              ({(att.size / 1024 / 1024).toFixed(2)} MB) - {att.type}
+                            </span>
+                          </div>
+                        </div>
+                        <a
+                          href={att.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          download={att.name}
+                          className="shrink-0"
+                        >
+                          <Button variant="outline" size="sm">
+                            <Download className="h-4 w-4 mr-2" />
+                            Download
+                          </Button>
+                        </a>
+                      </div>
+                      {att.type.startsWith('image/') && (
+                        <div className="mt-3 rounded-md overflow-hidden border max-w-xs mx-auto sm:mx-0">
+                           <NextImage
+                            src={att.url}
+                            alt={`Attachment: ${att.name}`}
+                            width={300}
+                            height={200}
+                            className="object-contain w-full h-auto max-h-60"
+                            unoptimized={att.url.endsWith('.gif')} // Example: disable optimization for GIFs
+                          />
+                        </div>
+                      )}
+                      {att.type.startsWith('video/') && (
+                        <div className="mt-3 rounded-md overflow-hidden border max-w-md mx-auto sm:mx-0">
+                          <video controls className="w-full max-h-80" preload="metadata">
+                            <source src={att.url} type={att.type} />
+                            Your browser does not support the video tag.
+                          </video>
+                        </div>
+                      )}
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            )}
+
+
           </CardContent>
           <CardFooter className="text-xs text-muted-foreground border-t pt-4">
-            Last updated: {lastUpdatedText}
+             Last updated: {ticket.updatedAt && typeof ticket.updatedAt.toDate === 'function' ? format(ticket.updatedAt.toDate(), 'PPpp') : 'Processing...'}
           </CardFooter>
         </Card>
 
