@@ -37,16 +37,17 @@ export const viewport: Viewport = {
 
 export default function RootLayout({
   children,
-  params: { locale }
+  params: { locale: paramsLocale } // Renamed to avoid confusion with currentLocale
 }: Readonly<{
   children: React.ReactNode;
-  params: { locale: string };
+  params: { locale: string }; // This type comes from Next.js routing, locale can be undefined for default
 }>) {
-  const currentLocale = getCurrentLocale();
+  const currentLocale = getCurrentLocale(); // This is the resolved locale from next-international
   return (
     <html lang={currentLocale} suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <I18nProviderClient locale={locale}>
+        {/* Use the resolved currentLocale for the I18nProviderClient */}
+        <I18nProviderClient locale={currentLocale}>
           <AuthProvider>
             {children}
             <Toaster />
