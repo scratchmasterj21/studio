@@ -123,12 +123,12 @@ export const createTicket = async (
 
   let assignedTo: string | undefined = undefined;
   let assignedToName: string | undefined = undefined;
-  let status: TicketStatus = 'Open';
+  let status: TicketStatus = 'Open'; // Default status is Open
 
   if (DEFAULT_WORKER_UID && DEFAULT_WORKER_UID !== "REPLACE_WITH_DEFAULT_WORKER_UID") {
     assignedTo = DEFAULT_WORKER_UID;
     assignedToName = DEFAULT_WORKER_NAME;
-    status = 'In Progress'; // Set to In Progress if assigned
+    // status remains 'Open' even if assigned by default. It becomes 'In Progress' when the worker starts working.
   }
 
   const newTicket = {
@@ -136,7 +136,7 @@ export const createTicket = async (
     description: ticketData.description,
     category: ticketData.category,
     priority: ticketData.priority,
-    status: status,
+    status: status, // Initial status will be "Open"
     createdBy: createdByProfile.uid,
     createdByName: createdByProfile.displayName || createdByProfile.email || 'Unknown User',
     assignedTo: assignedTo,
@@ -145,7 +145,7 @@ export const createTicket = async (
     updatedAt: serverTimestamp() as Timestamp,
     messages: [],
     attachments: ticketData.attachments || [],
-    solution: null, // Initialize solution as null
+    solution: null,
   };
   const docRef = await addDoc(ticketsRef, newTicket);
   return docRef.id;
@@ -234,14 +234,13 @@ export const updateTicketStatus = async (ticketId: string, newStatus: TicketStat
     updatedAt: serverTimestamp(),
   };
 
-  // If the new status is 'Open' or 'In Progress', clear any existing solution and its attachments
   if (newStatus === 'Open' || newStatus === 'In Progress') {
     try {
       const ticketSnap = await getDoc(ticketRef);
       if (ticketSnap.exists()) {
         const ticketData = ticketSnap.data() as Ticket;
         if (ticketData.status === 'Resolved' && ticketData.solution?.attachments && ticketData.solution.attachments.length > 0) {
-          console.log(`[UpdateStatus] Ticket ${ticketId} moved from Resolved. Deleting ${ticketData.solution.attachments.length} solution attachments from R2.`);
+          console.log(`[UpdateStatus] Ticket ${ticketId} moved from Resolved. Attempting to delete ${ticketData.solution.attachments.length} solution attachments from R2.`);
           const deletionPromises = ticketData.solution.attachments.map(async (att) => {
             if (att.fileKey) {
               try {
@@ -309,9 +308,9 @@ export const addMessageToTicket = async (ticketId: string, messageData: Omit<Tic
   const ticketRef = doc(db, 'tickets', ticketId);
   const newMessage: TicketMessage = {
     ...messageData,
-    id: doc(collection(db, 'tmp')).id,
+    id: doc(collection(db, 'tmp')).id, // Generate a unique ID for the message
     senderDisplayName: senderProfile.displayName || senderProfile.email || 'Unknown User',
-    timestamp: Timestamp.now(),
+    timestamp: Timestamp.now(), // Use client-side timestamp for messages
   };
 
   const ticketSnap = await getDoc(ticketRef);
@@ -322,7 +321,7 @@ export const addMessageToTicket = async (ticketId: string, messageData: Omit<Tic
   if (currentTicketData && (currentTicketData.status === 'Resolved' || currentTicketData.status === 'Closed')) {
     newStatus = 'In Progress'; // Re-open the ticket
     if (currentTicketData.status === 'Resolved' && currentTicketData.solution?.attachments && currentTicketData.solution.attachments.length > 0) {
-      console.log(`[AddMessage] Ticket ${ticketId} re-opened by message. Deleting ${currentTicketData.solution.attachments.length} solution attachments from R2.`);
+      console.log(`[AddMessage] Ticket ${ticketId} re-opened by message. Attempting to delete ${currentTicketData.solution.attachments.length} solution attachments from R2.`);
       const deletionPromises = currentTicketData.solution.attachments.map(async (att) => {
         if (att.fileKey) {
           try {
@@ -344,7 +343,7 @@ export const addMessageToTicket = async (ticketId: string, messageData: Omit<Tic
       });
       await Promise.allSettled(deletionPromises);
     }
-    shouldClearSolution = true; // Mark that solution object in Firestore should be cleared
+    shouldClearSolution = true;
   }
 
   const updatePayload: any = {
@@ -366,5 +365,3 @@ export const deleteTicket = async (ticketId: string): Promise<void> => {
   const ticketRef = doc(db, 'tickets', ticketId);
   await deleteDoc(ticketRef);
 };
-
-    
