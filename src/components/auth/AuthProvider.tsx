@@ -1,10 +1,13 @@
+
 "use client";
 
 import type { User } from 'firebase/auth';
 import { onAuthStateChanged, signInWithPopup, signOut as firebaseSignOut } from 'firebase/auth';
 import type { FirebaseError } from 'firebase/app';
 import { doc, getDoc, serverTimestamp, setDoc, Timestamp } from 'firebase/firestore';
-import { useRouter, usePathname } from 'next/navigation';
+import { usePathname } from 'next/navigation';
+import { useRouter } from 'next-international/navigation';
+import { useCurrentLocale } from '@/lib/i18n/client';
 import type { ReactNode} from 'react';
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { auth, db, googleProvider } from '@/lib/firebase';
@@ -28,7 +31,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
   const [isSigningIn, setIsSigningIn] = useState(false);
   const router = useRouter();
-  const pathname = usePathname();
+  const pathname = usePathname(); // next/navigation for raw path
+  const currentLocale = useCurrentLocale();
   const { toast } = useToast();
 
   useEffect(() => {
@@ -66,17 +70,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             }
           }
           
-          // Redirect only if on login/register pages
-          if (pathname === '/login' || pathname === '/') {
+          const unlocalizedPathname = pathname.replace(`/${currentLocale}`, '') || '/';
+          if (unlocalizedPathname === '/login' || unlocalizedPathname === '/') {
             router.replace('/dashboard');
           }
         } else {
           setUser(null);
           setUserProfile(null);
           
-          // Only redirect to login if not already on public pages
-          if (pathname !== '/login' && !pathname.startsWith('/_next/') && pathname !== '/') {
-            router.replace('/login');
+          const unlocalizedPathname = pathname.replace(`/${currentLocale}`, '') || '/';
+          if (unlocalizedPathname !== '/login' && !pathname.startsWith('/_next/') && unlocalizedPathname !== '/') {
+             router.replace('/login');
           }
         }
       } catch (error) {
@@ -89,10 +93,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     });
 
     return () => unsubscribe();
-  }, [router, toast, pathname]);
+  }, [router, toast, pathname, currentLocale]);
 
   const signInWithGoogle = async () => {
-    // Prevent multiple sign-in attempts
     if (isSigningIn) {
       console.log('Sign-in already in progress...');
       return;
@@ -101,31 +104,26 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setIsSigningIn(true);
     
     try {
-      // Clear any existing popup windows
       const result = await signInWithPopup(auth, googleProvider);
-      
-      // Optional: Log successful sign-in
       console.log('Successfully signed in:', result.user.email);
-      
-      // Success toast (optional, since user will be redirected)
       toast({
         title: 'Welcome!',
         description: 'Successfully signed in with Google.',
         variant: 'default',
       });
-      
     } catch (error) {
       console.error('Error signing in with Google:', error);
       const firebaseError = error as FirebaseError;
       
-      // Handle specific Firebase auth errors
       switch (firebaseError.code) {
         case 'auth/popup-closed-by-user':
-          // User intentionally closed the popup - this is normal behavior, not an error
           console.log('User closed the sign-in popup');
-          // Do nothing - this is expected user behavior
-          return; // Exit silently without showing any message
-          
+          toast({
+            title: 'Sign-in Canceled',
+            description: 'The sign-in popup was closed or the process was interrupted. Please try again.',
+            variant: 'default',
+          });
+          break;
         case 'auth/cancelled-popup-request':
           console.log('Popup request was cancelled');
           toast({
@@ -134,7 +132,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             variant: 'default',
           });
           break;
-          
         case 'auth/popup-blocked':
           toast({
             title: 'Popup Blocked',
@@ -142,7 +139,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             variant: 'destructive',
           });
           break;
-          
         case 'auth/operation-not-allowed':
           toast({
             title: 'Sign-in Method Disabled',
@@ -150,7 +146,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             variant: 'destructive',
           });
           break;
-          
         case 'auth/account-exists-with-different-credential':
           toast({
             title: 'Account Exists',
@@ -158,7 +153,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             variant: 'destructive',
           });
           break;
-          
         case 'auth/network-request-failed':
           toast({
             title: 'Network Error',
@@ -166,9 +160,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             variant: 'destructive',
           });
           break;
-          
         default:
-          // Handle any other errors
           toast({
             title: 'Sign In Failed',
             description: firebaseError.message || 'An unexpected error occurred during sign-in. Please try again.',
@@ -182,30 +174,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const signOut = async () => {
-    if (loading) return; // Prevent sign out during loading
+    if (loading) return;
     
     setLoading(true);
     
     try {
       await firebaseSignOut(auth);
-      
-      // Clear state immediately
       setUser(null);
       setUserProfile(null);
-      
-      // Navigate to login
       router.replace('/login');
-      
       toast({ 
         title: 'Signed Out', 
         description: "You have been successfully signed out.",
         variant: 'default',
       });
-      
     } catch (error) {
       console.error('Error signing out:', error);
       const firebaseError = error as FirebaseError;
-      
       toast({
         title: 'Sign Out Failed',
         description: firebaseError.message || 'Could not sign you out. Please try again.',
@@ -216,8 +201,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
   
-  // Show loading spinner during initial auth check, except on public pages
-  if (loading && !pathname.startsWith('/login') && pathname !== '/') {
+  const unlocalizedPathname = pathname.replace(`/${currentLocale}`, '') || '/';
+  if (loading && !unlocalizedPathname.startsWith('/login') && unlocalizedPathname !== '/') {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <LoadingSpinner size="lg" />

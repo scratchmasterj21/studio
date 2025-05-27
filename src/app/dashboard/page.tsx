@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState } from 'react';
@@ -7,7 +8,7 @@ import LoadingSpinner from '@/components/common/LoadingSpinner';
 import type { Ticket, TicketStatus, TicketPriority } from '@/lib/types';
 import { onTicketsUpdate } from '@/lib/firestore';
 import { Button } from '@/components/ui/button';
-import Link from 'next/link';
+import { Link } from 'next-international/link';
 import { PlusCircle, Filter } from 'lucide-react';
 import {
   Select,
@@ -16,8 +17,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ticketPriorities, ticketStatuses, siteConfig } from '@/config/site';
+import { ticketPriorities, ticketStatuses } from '@/config/site';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { useI18n, useCurrentLocale } from '@/lib/i18n/client';
 
 
 export default function DashboardPage() {
@@ -26,6 +28,8 @@ export default function DashboardPage() {
   const [isLoadingTickets, setIsLoadingTickets] = useState(true);
   const [statusFilter, setStatusFilter] = useState<TicketStatus | "all">("all");
   const [priorityFilter, setPriorityFilter] = useState<TicketPriority | "all">("all");
+  const t = useI18n();
+  const locale = useCurrentLocale();
 
   useEffect(() => {
     if (userProfile) {
@@ -52,11 +56,12 @@ export default function DashboardPage() {
   }
   
   const getPageTitle = () => {
+    if (!userProfile) return t('dashboard.pageTitle.tickets');
     switch (userProfile.role) {
-      case 'admin': return 'All Tickets';
-      case 'worker': return 'Assigned Tickets';
-      case 'user': return 'My Tickets';
-      default: return 'Tickets';
+      case 'admin': return t('dashboard.pageTitle.allTickets');
+      case 'worker': return t('dashboard.pageTitle.assignedTickets');
+      case 'user': return t('dashboard.pageTitle.myTickets');
+      default: return t('dashboard.pageTitle.tickets');
     }
   };
 
@@ -68,7 +73,7 @@ export default function DashboardPage() {
           <Button asChild>
             <Link href="/dashboard/tickets/new">
               <PlusCircle className="mr-2 h-5 w-5" />
-              Create New Ticket
+              {t('dashboard.createNewTicket')}
             </Link>
           </Button>
         )}
@@ -77,18 +82,18 @@ export default function DashboardPage() {
       {userProfile.role === 'admin' && (
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Filter className="h-5 w-5" /> Filters</CardTitle>
-            <CardDescription>Filter tickets by status or priority.</CardDescription>
+            <CardTitle className="flex items-center gap-2"><Filter className="h-5 w-5" /> {t('dashboard.filters')}</CardTitle>
+            <CardDescription>{t('dashboard.filterDescription')}</CardDescription>
           </CardHeader>
           <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label htmlFor="status-filter" className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+              <label htmlFor="status-filter" className="block text-sm font-medium text-gray-700 mb-1">{t('dashboard.status')}</label>
               <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as TicketStatus | "all")}>
                 <SelectTrigger id="status-filter">
-                  <SelectValue placeholder="Filter by status" />
+                  <SelectValue placeholder={t('dashboard.status')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Statuses</SelectItem>
+                  <SelectItem value="all">{t('dashboard.allStatuses')}</SelectItem>
                   {ticketStatuses.map(status => (
                     <SelectItem key={status} value={status}>{status}</SelectItem>
                   ))}
@@ -96,13 +101,13 @@ export default function DashboardPage() {
               </Select>
             </div>
             <div>
-              <label htmlFor="priority-filter" className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
+              <label htmlFor="priority-filter" className="block text-sm font-medium text-gray-700 mb-1">{t('dashboard.priority')}</label>
               <Select value={priorityFilter} onValueChange={(value) => setPriorityFilter(value as TicketPriority | "all")}>
                 <SelectTrigger id="priority-filter">
-                  <SelectValue placeholder="Filter by priority" />
+                  <SelectValue placeholder={t('dashboard.priority')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Priorities</SelectItem>
+                  <SelectItem value="all">{t('dashboard.allPriorities')}</SelectItem>
                   {ticketPriorities.map(priority => (
                     <SelectItem key={priority} value={priority}>{priority}</SelectItem>
                   ))}
