@@ -10,7 +10,7 @@ const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID;
 const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY;
 const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME;
 const R2_ENDPOINT = process.env.R2_ENDPOINT; // e.g., https://<ACCOUNT_ID>.r2.cloudflarestorage.com
-const R2_CUSTOM_PUBLIC_URL_BASE = process.env.R2_PUBLIC_URL_BASE; // User-defined public base URL (optional)
+// R2_PUBLIC_URL_BASE is now read directly in getPublicUrlBase function
 
 if (!R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY || !R2_BUCKET_NAME || !R2_ENDPOINT) {
   console.error('Critical R2 configuration is missing in environment variables for presigned URL generation. Uploads will fail.');
@@ -29,9 +29,10 @@ if (R2_ACCESS_KEY_ID && R2_SECRET_ACCESS_KEY && R2_BUCKET_NAME && R2_ENDPOINT) {
 }
 
 function getPublicUrlBase(): string | null {
-    if (R2_CUSTOM_PUBLIC_URL_BASE) {
-        console.log('[API Presigned URL] Using R2_PUBLIC_URL_BASE from environment:', R2_CUSTOM_PUBLIC_URL_BASE);
-        return R2_CUSTOM_PUBLIC_URL_BASE.endsWith('/') ? R2_CUSTOM_PUBLIC_URL_BASE.slice(0, -1) : R2_CUSTOM_PUBLIC_URL_BASE;
+    const customPublicUrlBase = process.env.R2_PUBLIC_URL_BASE;
+    if (customPublicUrlBase) {
+        console.log('[API Presigned URL] Using R2_PUBLIC_URL_BASE directly from process.env:', customPublicUrlBase);
+        return customPublicUrlBase.endsWith('/') ? customPublicUrlBase.slice(0, -1) : customPublicUrlBase;
     }
     console.log('[API Presigned URL] R2_PUBLIC_URL_BASE is not set in environment. Attempting to derive from R2_ENDPOINT and R2_BUCKET_NAME.');
     if (R2_ENDPOINT && R2_BUCKET_NAME) {
@@ -57,9 +58,6 @@ function getPublicUrlBase(): string | null {
 export async function GET(request: NextRequest) {
   // Log the raw environment variable value as seen by the server process
   console.log('[API Presigned URL Handler] Value of process.env.R2_PUBLIC_URL_BASE at request time:', process.env.R2_PUBLIC_URL_BASE);
-  // The R2_CUSTOM_PUBLIC_URL_BASE variable is already capturing this at module load time.
-  // console.log('[API Presigned URL Handler] Value of R2_CUSTOM_PUBLIC_URL_BASE (module scope):', R2_CUSTOM_PUBLIC_URL_BASE);
-
 
   if (!s3Client || !R2_BUCKET_NAME) {
     console.error('[API Presigned URL] R2 service is not configured or critical variables are missing on the server.');
@@ -94,7 +92,7 @@ export async function GET(request: NextRequest) {
     if (publicUrlBase) {
         publicFileUrl = `${publicUrlBase}/${uniqueKey}`;
     } else {
-        publicUrlNote = `Public URL base for R2 could not be determined. Returning only file key: ${uniqueKey}. Ensure R2_PUBLIC_URL_BASE is set or R2_ENDPOINT and R2_BUCKET_NAME are correct for derivation, and that objects are publicly readable for viewing.`;
+        publicUrlNote = `Public URL base for R2 could not be determined. Returning only file key: ${uniqueKey}. Ensure R2_PUBLIC_URL_BASE is set or R2_ENDPOINT and R2_BUCKET_NAME are correct for derivation, and that objects are publicly readable for viewing. If R2_PUBLIC_URL_BASE is set in .env.local, ensure the server was restarted.`;
         console.warn(`[API Presigned URL] ${publicUrlNote}`);
     }
     
