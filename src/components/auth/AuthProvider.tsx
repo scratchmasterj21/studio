@@ -6,7 +6,7 @@ import { onAuthStateChanged, signInWithPopup, signOut as firebaseSignOut } from 
 import type { FirebaseError } from 'firebase/app';
 import { doc, getDoc, serverTimestamp, setDoc, Timestamp } from 'firebase/firestore';
 import { usePathname } from 'next/navigation';
-import { useRouter } from 'next-international/navigation';
+import { useRouter } from 'next-international/client'; // Corrected import
 import { useCurrentLocale } from '@/lib/i18n/client';
 import type { ReactNode} from 'react';
 import React, { createContext, useContext, useEffect, useState } from 'react';
