@@ -87,7 +87,7 @@ export function AppHeader() {
                 <DropdownMenuSeparator />
                 <DropdownMenuGroup>
                   <DropdownMenuItem asChild>
-                    <Link href="/dashboard/profile"> {/* TODO: Create this page later */}
+                    <Link href="/dashboard/profile">
                       <UserCircle className="mr-2 h-4 w-4" />
                       Profile
                     </Link>

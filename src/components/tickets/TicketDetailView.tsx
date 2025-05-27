@@ -21,10 +21,10 @@ import {
 } from "@/components/ui/form";
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { addMessageToTicket, updateTicketStatus, assignTicket, getUserProfile, deleteTicket, resolveTicket } from '@/lib/firestore';
+import { addMessageToTicket, updateTicketStatus, assignTicket, getUserProfile, deleteTicket } from '@/lib/firestore';
 import TicketStatusBadge from './TicketStatusBadge';
 import TicketPriorityIcon from './TicketPriorityIcon';
-import { MessageSquare, Send, Edit3, Languages, Paperclip, Download, Image as ImageIcon, Video as VideoIcon, FileText, AlertTriangle, Trash2, CheckCircle2, Info } from 'lucide-react';
+import { MessageSquare, Send, Edit3, Languages, Paperclip, Download, Image as ImageIcon, Video as VideoIcon, FileText as FileTextIcon, AlertTriangle, Trash2, CheckCircle2, Info } from 'lucide-react'; // Renamed FileText to FileTextIcon
 import LoadingSpinner from '../common/LoadingSpinner';
 import StatusSelector from './StatusSelector';
 import AssignTicketDialog from './AssignTicketDialog';
@@ -91,6 +91,8 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
     if (typeof window !== 'undefined') {
       return `${window.location.origin}/dashboard/tickets/${ticket.id}`;
     }
+    // Fallback for server-side rendering, though it's less critical for email content generation
+    // that mostly happens on client actions. Consider if a more robust SSR base URL is needed.
     return `/dashboard/tickets/${ticket.id}`;
   };
 
@@ -115,19 +117,22 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
       toast({ title: "Message Sent", description: "Your reply has been added to the ticket." });
 
       let recipients: { email: string, name?: string }[] = [];
+      let creatorProfile: UserProfile | null = null;
+      let workerProfile: UserProfile | null = null;
 
       if (ticket.createdBy !== currentUserProfile.uid) {
-        const creatorProfile = await getUserProfile(ticket.createdBy);
+        creatorProfile = await getUserProfile(ticket.createdBy);
         if (creatorProfile?.email) {
           recipients.push({ email: creatorProfile.email, name: creatorProfile.displayName || ticket.createdByName || 'User' });
         }
       }
       if (ticket.assignedTo && ticket.assignedTo !== currentUserProfile.uid) {
-        const workerProfile = await getUserProfile(ticket.assignedTo);
+        workerProfile = await getUserProfile(ticket.assignedTo);
         if (workerProfile?.email) {
           recipients.push({ email: workerProfile.email, name: workerProfile.displayName || ticket.assignedToName || 'Agent' });
         }
       }
+      // Ensure unique recipients
       recipients = recipients.filter((r, index, self) =>
         index === self.findIndex((t) => t.email === r.email && r.email != null)
       );
@@ -140,7 +145,11 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
          });
          if(!emailSent.success){
             console.warn("[EmailDebug] Failed to send 'new reply' email notification(s):", emailSent.message, emailSent.error);
+         } else {
+            console.log("[EmailDebug] 'New reply' email notification attempt successful for recipients:", recipients.map(r => r.email));
          }
+      } else {
+        console.log("[EmailDebug] No recipients for 'new reply' email notification.");
       }
 
     } catch (error) {
@@ -152,7 +161,7 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
   };
 
   const handleStatusChange = async (newStatus: TicketStatus) => {
-    if (newStatus === 'Resolved') {
+    if (newStatus === 'Resolved' && (currentUserProfile.role === 'worker' || currentUserProfile.role === 'admin') && currentUserProfile.uid !== ticket.createdBy) {
       setShowResolveDialog(true);
       return; 
     }
@@ -167,21 +176,28 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
       const ticketCreatorName = ticket.createdByName || 'User';
       const shortTicketId = ticket.id.substring(0,8);
 
-      console.log(`[EmailDebug] Attempting status change email. Current User: ${currentUserProfile.uid}, Ticket Creator: ${ticket.createdBy}, New Status: ${newStatus}`);
-
+      console.log(`[EmailDebug] Attempting status change email. Current User: ${currentUserProfile.displayName} (${currentUserProfile.uid}), Ticket Creator: ${ticket.createdByName} (${ticket.createdBy}), New Status: ${newStatus}`);
 
       if (newStatus === 'Closed') {
         emailSubject = `Your FireDesk Ticket '${ticket.title}' (#${shortTicketId}) Has Been Closed`;
-        emailHtmlContent = `<p>Dear ${ticketCreatorName},</p><p>Your ticket <strong>${ticket.title}</strong> (#${shortTicketId}) has been <strong>Closed</strong>.</p><p>We hope your issue was resolved to your satisfaction. If you have any further questions, please feel free to submit a new ticket.</p>${getStandardFooter()}`;
+        emailHtmlContent = `<p>Dear ${ticketCreatorName},</p><p>Your ticket <strong>${ticket.title}</strong> (#${shortTicketId}) has been <strong>Closed</strong> by ${currentUserProfile.displayName || 'Support'}.</p><p>We hope your issue was resolved to your satisfaction. If you have any further questions, please feel free to submit a new ticket.</p>${getStandardFooter()}`;
+      } else if (newStatus === 'Resolved') {
+        // This path is now primarily for when a user themselves mark their own 'Resolved' ticket to 'Resolved' again (which shouldn't happen via UI)
+        // or if an admin/worker directly changes status to Resolved without solution dialog (less common now).
+        // The main "Resolved" email (with solution) is handled by onTicketResolved.
+        emailSubject = `FireDesk Ticket Status Updated: ${ticket.title} (#${shortTicketId}) is Now Resolved`;
+        emailHtmlContent = `<p>Dear ${ticketCreatorName},</p><p>The status of your ticket <strong>${ticket.title}</strong> (#${shortTicketId}) has been updated to <strong>Resolved</strong> by ${currentUserProfile.displayName || 'Support'}.</p><p>Please review the solution provided. If the issue persists, you can reply to the ticket to re-open it.</p>${getStandardFooter()}`;
       } else { 
         emailSubject = `FireDesk Ticket Status Updated: ${ticket.title} (#${shortTicketId}) to ${newStatus}`;
-        emailHtmlContent = `<p>Dear ${ticketCreatorName},</p><p>The status of your ticket <strong>${ticket.title}</strong> (#${shortTicketId}) has been updated to <strong>${newStatus}</strong>.</p>${getStandardFooter()}`;
+        emailHtmlContent = `<p>Dear ${ticketCreatorName},</p><p>The status of your ticket <strong>${ticket.title}</strong> (#${shortTicketId}) has been updated to <strong>${newStatus}</strong> by ${currentUserProfile.displayName || 'Support'}.</p>${getStandardFooter()}`;
       }
 
-      if (ticket.createdBy !== currentUserProfile.uid) {
+      // Only send if the ticket creator is not the one making the change,
+      // and it's a 'Closed' status change, or a direct 'Resolved' not via dialog.
+      if (ticket.createdBy !== currentUserProfile.uid && (newStatus === 'Closed' || (newStatus === 'Resolved' && !showResolveDialog) )) {
         const creatorProfile = await getUserProfile(ticket.createdBy);
         if (creatorProfile?.email) {
-           console.log(`[EmailDebug] Creator profile found for status change email: ${creatorProfile.email}. Sending email.`);
+           console.log(`[EmailDebug] Creator profile found for status change email: ${creatorProfile.email}. Sending status change email.`);
           const emailResult = await sendEmailViaBrevo({
             to: [{ email: creatorProfile.email, name: creatorProfile.displayName || ticket.createdByName || 'User' }],
             subject: emailSubject,
@@ -189,12 +205,14 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
           });
           if(!emailResult.success){
             console.warn("[EmailDebug] Brevo reported an issue sending 'status change' email:", emailResult.message, emailResult.error);
+          } else {
+            console.log(`[EmailDebug] 'Status change to ${newStatus}' email notification attempt successful for creator: ${creatorProfile.email}`);
           }
         } else {
            console.log("[EmailDebug] Creator profile or email not found. Skipping status change email.");
         }
       } else {
-        console.log("[EmailDebug] Current user is ticket creator. Skipping self-notification for status change.");
+        console.log("[EmailDebug] Email condition not met for direct status change notification (or user is self-notifying). Skipping email.");
       }
     } catch (error) {
       console.error("Error updating status:", error);
@@ -234,6 +252,7 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
     if (ticket.createdBy !== currentUserProfile.uid) {
       const creatorProfile = await getUserProfile(ticket.createdBy);
       if (creatorProfile?.email) {
+        console.log(`[EmailDebug] Creator profile found for 'ticket resolved' email: ${creatorProfile.email}. Sending email.`);
         const emailResult = await sendEmailViaBrevo({
           to: [{ email: creatorProfile.email, name: creatorProfile.displayName || ticket.createdByName || 'User' }],
           subject: emailSubject,
@@ -242,8 +261,14 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
         if (!emailResult.success) {
           console.warn(`[EmailDebug] Brevo reported an issue sending 'ticket resolved' email for ticket ${ticket.id} to creator ${creatorProfile.email}: ${emailResult.message}`, emailResult.error);
           toast({ title: "Notification Error", description: "Failed to send resolution email to user.", variant: "destructive" });
+        } else {
+           console.log(`[EmailDebug] 'Ticket resolved' email notification attempt successful for creator: ${creatorProfile.email}`);
         }
+      } else {
+        console.log("[EmailDebug] Creator profile or email not found. Skipping 'ticket resolved' email.");
       }
+    } else {
+      console.log("[EmailDebug] User resolved their own ticket. Skipping 'ticket resolved' email notification.");
     }
   };
 
@@ -254,23 +279,34 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
       toast({ title: "Ticket Assigned", description: `Ticket assigned to ${workerName}.` });
       const shortTicketId = ticket.id.substring(0,8);
 
+      // Notify the assigned worker
       const workerProfile = await getUserProfile(workerId);
       if (workerProfile?.email) {
+        console.log(`[EmailDebug] Worker profile found for assignment email: ${workerProfile.email}. Sending email.`);
         await sendEmailViaBrevo({
           to: [{ email: workerProfile.email, name: workerProfile.displayName || workerName }],
           subject: `New Ticket Assignment: ${ticket.title} (#${shortTicketId})`,
           htmlContent: `<p>Hello ${workerProfile.displayName || workerName},</p><p>You have been assigned a new ticket: <strong>${ticket.title}</strong> (#${shortTicketId}).</p><p>Please review the ticket details and take appropriate action.</p>${getStandardFooter()}`,
         });
+      } else {
+         console.log(`[EmailDebug] Worker profile or email not found for ${workerId}. Skipping assignment email to worker.`);
       }
+
+      // Notify the ticket creator (if they are not the one assigning and not the one being assigned)
        if (ticket.createdBy !== currentUserProfile.uid && ticket.createdBy !== workerId) {
         const creatorProfile = await getUserProfile(ticket.createdBy);
         if (creatorProfile?.email) {
+          console.log(`[EmailDebug] Creator profile found for assignment notification: ${creatorProfile.email}. Sending email.`);
           await sendEmailViaBrevo({
             to: [{ email: creatorProfile.email, name: creatorProfile.displayName || ticket.createdByName || 'User' }],
             subject: `FireDesk Ticket Assigned: ${ticket.title} (#${shortTicketId}) to ${workerName}`,
             htmlContent: `<p>Dear ${creatorProfile.displayName || ticket.createdByName || 'User'},</p><p>Your ticket <strong>${ticket.title}</strong> (#${shortTicketId}) has been assigned to <strong>${workerName}</strong>.</p><p>They will be looking into your issue shortly.</p>${getStandardFooter()}`,
           });
+        } else {
+          console.log(`[EmailDebug] Creator profile or email not found for ticket creator ${ticket.createdBy}. Skipping assignment notification to creator.`);
         }
+      } else {
+         console.log(`[EmailDebug] Conditions not met for notifying creator about assignment (creator is assigner or assignee).`);
       }
 
     } catch (error) {
@@ -282,6 +318,7 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
   const handleDeleteTicket = async () => {
     setIsDeletingTicket(true);
     try {
+      // Attempt to delete main ticket attachments from R2
       if (ticket.attachments && ticket.attachments.length > 0) {
         console.log(`[TicketDelete] Deleting ${ticket.attachments.length} R2 attachments for ticket ${ticket.id}`);
         const deletionPromises = ticket.attachments.map(async (att) => {
@@ -321,6 +358,7 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
         await Promise.allSettled(deletionPromises);
       }
 
+      // Attempt to delete solution attachments from R2
       if (ticket.solution?.attachments && ticket.solution.attachments.length > 0) {
         console.log(`[TicketDelete] Deleting ${ticket.solution.attachments.length} R2 solution attachments for ticket ${ticket.id}`);
         const solutionDeletionPromises = ticket.solution.attachments.map(async (att) => {
@@ -353,8 +391,9 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
     } catch (error) {
       console.error("Error during the overall ticket deletion process:", error);
       toast({ title: "Ticket Deletion Error", description: "Failed to delete the ticket from Firestore. Please try again or check server logs.", variant: "destructive" });
-      setIsDeletingTicket(false);
+      setIsDeletingTicket(false); // Only reset if Firestore deletion itself fails
     }
+    // No finally here, as navigation should happen on success
   };
 
   const handleTranslateDescription = async () => {
@@ -451,6 +490,7 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
 
 
   const canManageTicket = currentUserProfile.role === 'admin' || (currentUserProfile.role === 'worker' && ticket.assignedTo === currentUserProfile.uid);
+  const isTicketCreator = currentUserProfile.uid === ticket.createdBy;
 
   const lastUpdatedText = ticket.updatedAt && typeof ticket.updatedAt.toDate === 'function'
     ? format(ticket.updatedAt.toDate(), 'PPpp')
@@ -467,8 +507,8 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
   const getAttachmentIcon = (type: string) => {
     if (type.startsWith('image/')) return <ImageIcon className="h-5 w-5 text-primary" />;
     if (type.startsWith('video/')) return <VideoIcon className="h-5 w-5 text-primary" />;
-    if (type === 'application/pdf') return <FileText className="h-5 w-5 text-red-500" />;
-    return <FileText className="h-5 w-5 text-muted-foreground" />;
+    if (type === 'application/pdf') return <FileTextIcon className="h-5 w-5 text-red-500" />;
+    return <FileTextIcon className="h-5 w-5 text-muted-foreground" />;
   };
 
   const renderAttachments = (attachments: Attachment[], title: string) => {
@@ -479,6 +519,15 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
           <Paperclip className="h-5 w-5 mr-2 text-muted-foreground" />
           {title} ({attachments.length})
         </h3>
+        {attachmentLoadErrorOccurred && (
+          <Alert variant="destructive" className="mb-3">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Attachment Loading Error</AlertTitle>
+            <AlertDescription>
+              One or more attachments could not be loaded. An "Invalid Argument Authorization" or 403 Forbidden error for an attachment URL typically means the R2 object is private. Please ensure objects in your R2 bucket are set to **publicly readable** in Cloudflare R2 settings (Bucket Settings -&gt; Public access -&gt; Allow). Also, verify your R2 bucket's CORS policy allows GET requests from this application's origin.
+            </AlertDescription>
+          </Alert>
+        )}
         <div className="space-y-3">
           {attachments.map((att) => (
             <Card key={att.id} className="p-3 shadow-sm bg-muted/30">
@@ -515,16 +564,15 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
                     width={300}
                     height={200}
                     className="object-contain w-full h-auto max-h-60"
-                    unoptimized={true}
+                    unoptimized={true} // Set to true if R2 isn't configured for Next/Image optimization or to bypass potential issues
                     onError={(e) => {
                       setAttachmentLoadErrorOccurred(true);
-                      const errorTarget = e.target as HTMLImageElement;
-                      console.error(`[TicketDetailView] Failed to load image: ${att.url}. Natural width: ${errorTarget.naturalWidth}.`);
+                      console.error(`[TicketDetailView] Failed to load image: ${att.url}.`);
                       toast({
                         title: "Image Load Error",
-                        description: `Could not load image: ${att.name}. An "Invalid Argument Authorization" or 403 Forbidden error for the URL typically means the R2 object is private. Please check R2 public access permissions and ensure objects are publicly readable.`,
+                        description: `Could not load image: ${att.name}. An "Invalid Argument Authorization" or 403 Forbidden error for the URL typically means the R2 object is private. Please check R2 public access permissions.`,
                         variant: "destructive",
-                        duration: 7000,
+                        duration: 10000,
                       });
                     }}
                   />
@@ -549,6 +597,7 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
                       if (errorCode === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) { 
                         toastDescription = `Video format or codec for "${att.name}" is not supported by your browser, or the file might be corrupted. Please try a different video format (e.g., common MP4 H.264). Also ensure the R2 object is publicly readable and the content type is correct (e.g., 'video/mp4').`;
                       } else if (errorMessage.toLowerCase().includes("authorization") || (errorTarget.error && !errorCode)) {
+                        // This condition might be hit if the browser gets a generic network error due to CORS/Permissions before specific media error codes
                         toastDescription = `Could not load video: ${att.name}. This often indicates an "Invalid Argument Authorization" or similar access error, meaning the R2 object is private. Please check R2 public access permissions and ensure objects are publicly readable.`;
                       } else {
                         toastDescription += ` Browser error: ${errorMessage} (Code: ${errorCode}). Ensure the R2 object is publicly readable and the content type is correctly set in R2.`;
@@ -557,7 +606,7 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
                         title: "Video Load Error",
                         description: toastDescription,
                         variant: "destructive",
-                        duration: 7000,
+                        duration: 10000,
                       });
                     }}
                   >
@@ -601,9 +650,9 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
                   >
                       <Languages className="h-4 w-4 mr-1 sm:mr-2" />
                       <span className="hidden sm:inline">{translateDescriptionButtonText}</span>
-                      <span className="sm:hidden">{isTranslatingDescription ? <LoadingSpinner size="sm" /> : <Languages className="h-4 w-4" />}</span>
+                      {isTranslatingDescription && <LoadingSpinner size="sm" className="sm:hidden ml-0" />}
+                      {!isTranslatingDescription && <span className="sm:hidden"><Languages className="h-4 w-4" /></span>}
                   </Button>
-                  {isTranslatingDescription && <LoadingSpinner size="sm" className="ml-2 inline-block" />}
                 </div>
               )}
             </div>
@@ -617,15 +666,7 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
                 {ticket.priority || "N/A"} Priority
               </div>
             </div>
-            {attachmentLoadErrorOccurred && (
-              <Alert variant="destructive" className="mt-4">
-                <AlertTriangle className="h-4 w-4" />
-                <AlertTitle>Attachment Loading Error</AlertTitle>
-                <AlertDescription>
-                  One or more attachments could not be loaded. An "Invalid Argument Authorization" or 403 Forbidden error for the attachment URL typically means the R2 object is private. Please ensure objects in your R2 bucket are set to **publicly readable** in Cloudflare R2 settings (Bucket Settings -&gt; Public access -&gt; Allow). Also, verify your R2 bucket's CORS policy allows GET requests from this application's origin.
-                </AlertDescription>
-              </Alert>
-            )}
+            
             {renderAttachments(ticket.attachments || [], 'Ticket Attachments')}
           </CardContent>
           <CardFooter className="text-xs text-muted-foreground border-t pt-4">
@@ -659,9 +700,9 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
                     >
                         <Languages className="h-4 w-4 mr-1 sm:mr-2" />
                         <span className="hidden sm:inline">{translateSolutionButtonText}</span>
-                        <span className="sm:hidden">{isTranslatingSolution ? <LoadingSpinner size="sm" /> : <Languages className="h-4 w-4" />}</span>
+                        {isTranslatingSolution && <LoadingSpinner size="sm" className="sm:hidden ml-0" />}
+                        {!isTranslatingSolution && <span className="sm:hidden"><Languages className="h-4 w-4" /></span>}
                     </Button>
-                    {isTranslatingSolution && <LoadingSpinner size="sm" className="ml-2 inline-block" />}
                     </div>
                 )}
               </div>
@@ -689,7 +730,7 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
           </CardContent>
         </Card>
 
-        {ticket.status !== 'Closed' && ticket.status !== 'Resolved' && (
+        {ticket.status !== 'Closed' && !(ticket.status === 'Resolved' && isTicketCreator) && (
           <Card className="shadow-md">
             <CardHeader>
               <CardTitle className="text-xl flex items-center"><Edit3 className="mr-2 h-5 w-5" /> Add Your Reply</CardTitle>
@@ -719,22 +760,28 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
             </CardContent>
           </Card>
         )}
-         {ticket.status === 'Resolved' && currentUserProfile.uid === ticket.createdBy && (
-            <Card className="shadow-md">
-                <CardHeader>
-                    <CardTitle className="text-xl flex items-center"><Info className="mr-2 h-5 w-5 text-blue-500"/> Issue Resolved?</CardTitle>
+         {ticket.status === 'Resolved' && isTicketCreator && (
+            <Card className="shadow-md border-blue-500 border-2">
+                <CardHeader className="bg-blue-50 dark:bg-blue-900/30">
+                    <div className="flex items-center gap-2">
+                        <Info className="h-6 w-6 text-blue-600" />
+                        <CardTitle className="text-xl text-blue-700 dark:text-blue-400">Action Required: Issue Resolved?</CardTitle>
+                    </div>
                 </CardHeader>
-                <CardContent className="space-y-3">
-                    <p className="text-sm text-muted-foreground">
-                        This ticket has been marked as resolved. If the solution provided addresses your issue, you can close this ticket.
-                        If you are still experiencing problems, please add a reply above, and the ticket status will be re-opened for further assistance.
+                <CardContent className="space-y-4 pt-4">
+                    <p className="text-sm text-foreground">
+                        This ticket has been marked as resolved. Please review the solution provided above.
                     </p>
+                    <ul className="list-disc list-inside text-sm space-y-1 text-muted-foreground">
+                        <li>If the solution addresses your issue, please click the button below to close your ticket.</li>
+                        <li>If you are still experiencing problems, add a reply to this ticket (using the reply box above if available, or by creating a new one if not), and the ticket status will be automatically re-opened for further assistance.</li>
+                    </ul>
                     <Button 
                         onClick={() => handleStatusChange('Closed')} 
                         disabled={isUpdatingStatus}
-                        className="w-full"
+                        className="w-full bg-primary hover:bg-primary/90"
                     >
-                        {isUpdatingStatus ? <LoadingSpinner size="sm" className="mr-2" /> : null}
+                        {isUpdatingStatus ? <LoadingSpinner size="sm" className="mr-2" /> : <CheckCircle2 className="mr-2 h-5 w-5" />}
                         Yes, Close My Ticket
                     </Button>
                 </CardContent>
@@ -859,5 +906,3 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
     </div>
   );
 }
-
-    
