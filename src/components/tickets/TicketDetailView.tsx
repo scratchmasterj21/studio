@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
 import type { Ticket, UserProfile, TicketStatus, Attachment } from '@/lib/types';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -52,6 +52,15 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
   const [translatedDescription, setTranslatedDescription] = useState<string | null>(null);
   const [isTranslatingDescription, setIsTranslatingDescription] = useState(false);
   const [showOriginalDescription, setShowOriginalDescription] = useState(true);
+
+  useEffect(() => {
+    if (ticket.attachments && ticket.attachments.length > 0) {
+      console.log('[TicketDetailView] Attachments found:', ticket.attachments);
+      ticket.attachments.forEach(att => {
+        console.log(`[TicketDetailView] Attachment - Name: ${att.name}, URL: ${att.url}, Type: ${att.type}, Size: ${att.size}`);
+      });
+    }
+  }, [ticket.attachments]);
 
   const messageForm = useForm<MessageFormValues>({
     resolver: zodResolver(messageFormSchema),
@@ -394,7 +403,7 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
                             width={300}
                             height={200}
                             className="object-contain w-full h-auto max-h-60"
-                            unoptimized={att.url.endsWith('.gif')} // Example: disable optimization for GIFs
+                            unoptimized={true} // Temporarily disable optimization for all images for debugging
                           />
                         </div>
                       )}
@@ -538,3 +547,5 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
     </div>
   );
 }
+
+    
