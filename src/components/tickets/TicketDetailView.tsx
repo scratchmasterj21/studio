@@ -58,13 +58,6 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
       console.log('[TicketDetailView] Attachments found for ticket:', ticket.id, ticket.attachments);
       ticket.attachments.forEach(att => {
         console.log(`[TicketDetailView] Attachment - Name: ${att.name}, URL: ${att.url}, Type: ${att.type}, Size: ${att.size}, Key: ${att.fileKey}`);
-        // Attempt to load the URL directly to see if it's accessible
-        // This is for debugging in development; remove for production if too noisy
-        if (process.env.NODE_ENV === 'development') {
-          fetch(att.url, { method: 'HEAD' })
-            .then(res => console.log(`[TicketDetailView] HEAD request to ${att.url} status: ${res.status}`))
-            .catch(err => console.error(`[TicketDetailView] HEAD request to ${att.url} failed:`, err));
-        }
       });
     }
   }, [ticket.attachments, ticket.id]);
@@ -415,10 +408,11 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
                             className="object-contain w-full h-auto max-h-60"
                             unoptimized={true} 
                             onError={(e) => {
-                              console.error(`[TicketDetailView] Failed to load image: ${att.url}`, e.target['error'] || 'Unknown error');
+                              const errorTarget = e.target as HTMLImageElement;
+                              console.error(`[TicketDetailView] Failed to load image: ${att.url}. Natural width: ${errorTarget.naturalWidth}. Error:`, errorTarget.error || 'Unknown image error');
                               toast({
                                 title: "Image Load Error",
-                                description: `Could not load image: ${att.name}. URL might be invalid or object not public.`,
+                                description: `Could not load image: ${att.name}. The URL might be invalid or the object in R2 is not publicly readable. An "Invalid Argument Authorization" error typically means the R2 object is private. Please check R2 permissions.`,
                                 variant: "destructive"
                               });
                             }}
@@ -433,10 +427,11 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
                             preload="metadata"
                             src={att.url}
                             onError={(e) => {
-                              console.error(`[TicketDetailView] Failed to load video: ${att.url}`, e.target['error'] || 'Unknown error');
+                              const errorTarget = e.target as HTMLVideoElement;
+                              console.error(`[TicketDetailView] Failed to load video: ${att.url}. Error code: ${errorTarget.error?.code}, Message: ${errorTarget.error?.message}`);
                               toast({
                                 title: "Video Load Error",
-                                description: `Could not load video: ${att.name}. URL might be invalid or object not public.`,
+                                description: `Could not load video: ${att.name}. The URL might be invalid, the object in R2 is not publicly readable, or the video format is not supported by your browser. An "Invalid Argument Authorization" error for the URL typically means the R2 object is private. Please check R2 permissions.`,
                                 variant: "destructive"
                               });
                             }}
@@ -451,7 +446,8 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
                  <div className="mt-3 text-xs text-muted-foreground flex items-start gap-1.5 p-2 border border-dashed rounded-md">
                     <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
                     <span>
-                        If attachments are not displaying correctly, please ensure objects in your R2 bucket ('uploads/' prefix) are set to **publicly readable**. 
+                        If attachments are not displaying correctly, please ensure objects in your R2 bucket (especially under the 'uploads/' prefix) are set to **publicly readable**. 
+                        An "Invalid Argument Authorization" error when accessing the URL directly means the object is likely private.
                         Also, verify your R2 bucket's CORS policy allows GET requests from this application's origin.
                     </span>
                 </div>
@@ -584,6 +580,8 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
     </div>
   );
 }
+    
+
     
 
     
