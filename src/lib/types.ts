@@ -25,7 +25,7 @@ export interface TicketMessage {
 }
 
 export interface Ticket {
-  id: string;
+  id:string;
   title: string;
   description: string;
   status: TicketStatus;
@@ -38,4 +38,12 @@ export interface Ticket {
   createdAt: Timestamp;
   updatedAt: Timestamp;
   messages: TicketMessage[];
+}
+
+export interface TicketStats {
+  totalTickets: number;
+  openTickets: number;
+  inProgressTickets: number;
+  resolvedTickets: number;
+  closedTickets: number;
 }

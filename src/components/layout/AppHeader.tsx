@@ -16,7 +16,7 @@ import {
 import { useAuth } from '@/components/auth/AuthProvider';
 import { SignOutButton } from '@/components/auth/SignOutButton';
 import { siteConfig } from '@/config/site';
-import { LayoutGrid, PlusCircle, Ticket as TicketIcon, UserCircle, Users as UsersIcon } from 'lucide-react';
+import { LayoutGrid, PlusCircle, Ticket as TicketIcon, UserCircle, Users as UsersIcon, ShieldCheck } from 'lucide-react';
 import type { UserProfile } from '@/lib/types'; // Ensure UserProfile type is imported if not already
 
 interface NavLink {
@@ -27,8 +27,9 @@ interface NavLink {
 }
 
 const navLinks: NavLink[] = [
-  { href: '/dashboard', label: 'Dashboard', icon: <LayoutGrid className="h-4 w-4" />, roles: ['user', 'worker', 'admin'] },
+  { href: '/dashboard', label: 'My Tickets', icon: <LayoutGrid className="h-4 w-4" />, roles: ['user', 'worker', 'admin'] }, // Label adjusted for clarity based on common user view
   { href: '/dashboard/tickets/new', label: 'New Ticket', icon: <PlusCircle className="h-4 w-4" />, roles: ['user', 'admin'] },
+  { href: '/dashboard/admin', label: 'Admin Overview', icon: <ShieldCheck className="h-4 w-4" />, roles: ['admin'] },
   { href: '/dashboard/admin/users', label: 'Manage Users', icon: <UsersIcon className="h-4 w-4" />, roles: ['admin'] },
 ];
 
@@ -89,6 +90,23 @@ export function AppHeader() {
                     Profile (TBD)
                   </Link>
                 </DropdownMenuItem>
+                {/* Dynamically show admin links in dropdown too for mobile/smaller screens */}
+                {userProfile.role === 'admin' && (
+                  <>
+                    <DropdownMenuItem asChild>
+                       <Link href="/dashboard/admin">
+                        <ShieldCheck className="mr-2 h-4 w-4" />
+                        Admin Overview
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                       <Link href="/dashboard/admin/users">
+                        <UsersIcon className="mr-2 h-4 w-4" />
+                        Manage Users
+                      </Link>
+                    </DropdownMenuItem>
+                  </>
+                )}
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
               <SignOutButton asDropdownItem />
