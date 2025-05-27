@@ -21,7 +21,7 @@ import {
   DocumentSnapshot,
 } from 'firebase/firestore';
 import { db } from './firebase';
-import type { Ticket, TicketMessage, TicketStatus, UserProfile, UserRole, TicketStats } from './types';
+import type { Ticket, TicketMessage, TicketStatus, UserProfile, UserRole } from './types';
 import { ticketStatuses } from '@/config/site';
 
 // User Profile Functions
@@ -62,7 +62,7 @@ export const updateUserRole = async (uid: string, newRole: UserRole): Promise<vo
     await updateDoc(userRef, {
       role: newRole,
       // Optionally, add an updatedAt timestamp here if needed for auditing
-      // updatedAt: serverTimestamp(), 
+      // updatedAt: serverTimestamp(),
     });
   } catch (error) {
     console.error(`Error updating role for user ${uid} to ${newRole}:`, error);
@@ -73,7 +73,7 @@ export const updateUserRole = async (uid: string, newRole: UserRole): Promise<vo
 export const getAllUsersByRole = (role: UserRole, callback: (users: UserProfile[]) => void): Unsubscribe => {
   const usersRef = collection(db, 'users');
   const q = query(usersRef, where('role', '==', role), orderBy('displayName'));
-  
+
   return onSnapshot(q, (snapshot: QuerySnapshot<DocumentData>) => {
     const users = snapshot.docs.map(docSnap => ({
       ...docSnap.data(),
@@ -87,7 +87,7 @@ export const getAssignableAgents = (callback: (users: UserProfile[]) => void): U
   const usersRef = collection(db, 'users');
   // Query for users whose role is either 'worker' or 'admin'
   const q = query(usersRef, where('role', 'in', ['worker', 'admin']), orderBy('displayName'));
-  
+
   return onSnapshot(q, (snapshot: QuerySnapshot<DocumentData>) => {
     const users = snapshot.docs.map(docSnap => ({
       ...docSnap.data(),
@@ -110,9 +110,9 @@ export const getAllUsers = (callback: (users: UserProfile[]) => void): Unsubscri
       if (createdAtTimestamp && typeof createdAtTimestamp.toDate !== 'function' && createdAtTimestamp.seconds) {
         createdAtTimestamp = new Timestamp(createdAtTimestamp.seconds, createdAtTimestamp.nanoseconds);
       } else if (!createdAtTimestamp) {
-        createdAtTimestamp = Timestamp.now(); 
+        createdAtTimestamp = Timestamp.now();
       }
-      
+
       return {
         ...data,
         uid: docSnap.id,
@@ -141,14 +141,14 @@ export const createTicket = async (ticketData: Omit<Ticket, 'id' | 'createdAt' |
 };
 
 const mapDocToTicket = (docSnap: DocumentSnapshot<DocumentData>): Ticket => {
-  const data = docSnap.data() as any; 
+  const data = docSnap.data() as any;
   return {
     ...data,
     id: docSnap.id,
-    createdAt: data.createdAt, 
-    updatedAt: data.updatedAt, 
-    messages: data.messages?.map((msg: any) => ({ 
-        ...msg, 
+    createdAt: data.createdAt,
+    updatedAt: data.updatedAt,
+    messages: data.messages?.map((msg: any) => ({
+        ...msg,
         timestamp: msg.timestamp && typeof msg.timestamp.toDate === 'function' ? msg.timestamp : (msg.timestamp && msg.timestamp.seconds ? new Timestamp(msg.timestamp.seconds, msg.timestamp.nanoseconds) : Timestamp.now())
     })) || [],
   } as Ticket;
@@ -176,7 +176,7 @@ export const onTicketsUpdate = (
   } else { // 'user'
     qConstraints.push(where('createdBy', '==', userProfile.uid));
   }
-  
+
   const q = query(ticketsRef, ...qConstraints);
 
   return onSnapshot(q, (snapshot: QuerySnapshot<DocumentData>) => {
@@ -205,7 +205,7 @@ export const assignTicket = async (ticketId: string, workerId: string, workerNam
   await updateDoc(ticketRef, {
     assignedTo: workerId,
     assignedToName: workerName,
-    status: 'In Progress', 
+    status: 'In Progress',
     updatedAt: serverTimestamp(),
   });
 };
@@ -214,50 +214,12 @@ export const addMessageToTicket = async (ticketId: string, messageData: Omit<Tic
   const ticketRef = doc(db, 'tickets', ticketId);
   const newMessage: TicketMessage = {
     ...messageData,
-    id: doc(collection(db, 'tmp')).id, 
+    id: doc(collection(db, 'tmp')).id,
     senderDisplayName: senderProfile.displayName || senderProfile.email || 'Unknown User',
-    timestamp: Timestamp.now(), 
+    timestamp: Timestamp.now(), // Use client-side timestamp for messages in arrayUnion
   };
   await updateDoc(ticketRef, {
     messages: arrayUnion(newMessage),
-    updatedAt: serverTimestamp(), 
-  });
-};
-
-// Ticket Statistics Function
-export const onTicketStatsUpdate = (callback: (stats: TicketStats) => void): Unsubscribe => {
-  const ticketsRef = collection(db, 'tickets');
-  // No specific query constraints needed here, we'll aggregate all tickets.
-  // We still order by something simple just to have a valid query, though it's not strictly used for aggregation here.
-  const q = query(ticketsRef, orderBy('createdAt', 'desc')); 
-
-  return onSnapshot(q, (snapshot: QuerySnapshot<DocumentData>) => {
-    const stats: TicketStats = {
-      totalTickets: 0,
-      openTickets: 0,
-      inProgressTickets: 0,
-      resolvedTickets: 0,
-      closedTickets: 0,
-    };
-
-    stats.totalTickets = snapshot.size;
-    snapshot.docs.forEach(docSnap => {
-      const ticket = docSnap.data() as Partial<Ticket>; // Use partial as we only need status
-      switch (ticket.status) {
-        case 'Open':
-          stats.openTickets++;
-          break;
-        case 'In Progress':
-          stats.inProgressTickets++;
-          break;
-        case 'Resolved':
-          stats.resolvedTickets++;
-          break;
-        case 'Closed':
-          stats.closedTickets++;
-          break;
-      }
-    });
-    callback(stats);
+    updatedAt: serverTimestamp(),
   });
 };

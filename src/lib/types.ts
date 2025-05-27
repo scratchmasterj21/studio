@@ -39,11 +39,3 @@ export interface Ticket {
   updatedAt: Timestamp;
   messages: TicketMessage[];
 }
-
-export interface TicketStats {
-  totalTickets: number;
-  openTickets: number;
-  inProgressTickets: number;
-  resolvedTickets: number;
-  closedTickets: number;
-}
