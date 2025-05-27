@@ -1,0 +1,16 @@
+# This file configures how Netlify builds and deploys your Next.js site.
+
+[build]
+  # Command to build your Next.js site.
+  # This should match the build script in your package.json.
+  command = "npm run build"
+
+  # Directory that contains the built site.
+  # For Next.js, this is typically ".next".
+  publish = ".next"
+
+# The Netlify Plugin for Next.js is essential for features like SSR,
+# API routes, image optimization, etc. Netlify usually auto-detects
+# and applies this, but explicitly including it ensures it's used.
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
