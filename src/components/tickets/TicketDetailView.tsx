@@ -32,6 +32,7 @@ import MessageItem from './MessageItem';
 import { sendEmailViaBrevo } from '@/lib/brevo';
 import { translateText, type TranslateTextInput } from '@/ai/flows/translate-text-flow';
 import NextImage from 'next/image';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 
 const messageFormSchema = z.object({
@@ -52,6 +53,8 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
   const [translatedDescription, setTranslatedDescription] = useState<string | null>(null);
   const [isTranslatingDescription, setIsTranslatingDescription] = useState(false);
   const [showOriginalDescription, setShowOriginalDescription] = useState(true);
+  const [attachmentLoadErrorOccurred, setAttachmentLoadErrorOccurred] = useState(false);
+
 
   useEffect(() => {
     if (ticket.attachments && ticket.attachments.length > 0) {
@@ -370,6 +373,18 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
                   <Paperclip className="h-5 w-5 mr-2 text-muted-foreground" />
                   Attachments ({ticket.attachments.length})
                 </h3>
+                 {attachmentLoadErrorOccurred && (
+                  <Alert variant="destructive" className="mb-4">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertTitle>Attachment Loading Error</AlertTitle>
+                    <AlertDescription>
+                      One or more attachments could not be loaded. This often means the files in Cloudflare R2 are not publicly readable.
+                      An "Invalid Argument Authorization" error when accessing the file URL directly points to this.
+                      Please ensure objects in your R2 bucket (especially under 'uploads/') are set to **publicly readable** in your Cloudflare R2 settings.
+                      Also verify your R2 bucket's CORS policy allows GET requests from this application's origin.
+                    </AlertDescription>
+                  </Alert>
+                )}
                 <div className="space-y-3">
                   {ticket.attachments.map((att) => (
                     <Card key={att.id} className="p-3 shadow-sm bg-muted/30">
@@ -408,11 +423,12 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
                             className="object-contain w-full h-auto max-h-60"
                             unoptimized={true} 
                             onError={(e) => {
+                              setAttachmentLoadErrorOccurred(true);
                               const errorTarget = e.target as HTMLImageElement;
                               console.error(`[TicketDetailView] Failed to load image: ${att.url}. Natural width: ${errorTarget.naturalWidth}. Error:`, errorTarget.error || 'Unknown image error');
                               toast({
                                 title: "Image Load Error",
-                                description: `Could not load image: ${att.name}. The URL might be invalid or the object in R2 is not publicly readable. An "Invalid Argument Authorization" error for the URL typically means the R2 object is private. Please check R2 permissions.`,
+                                description: `Could not load image: ${att.name}. An "Invalid Argument Authorization" error for the URL typically means the R2 object is private. Please check R2 permissions and ensure objects are publicly readable.`,
                                 variant: "destructive"
                               });
                             }}
@@ -426,8 +442,9 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
                             className="w-full max-h-80"
                             preload="metadata"
                             src={att.url}
-                            type={att.type} // Explicitly set the type attribute
+                            type={att.type} 
                             onError={(e) => {
+                              setAttachmentLoadErrorOccurred(true);
                               const errorTarget = e.target as HTMLVideoElement;
                               const errorCode = errorTarget.error?.code;
                               const errorMessage = errorTarget.error?.message || "Unknown video error";
@@ -435,11 +452,11 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
                               
                               let toastDescription = `Could not load video: ${att.name}. The URL might be invalid or the object in R2 is not publicly readable.`;
                               if (errorCode === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) { // Code 4
-                                toastDescription = `Video format or codec for "${att.name}" is not supported by your browser, or the file might be corrupted. Please try a different video format (e.g., common MP4 H.264).`;
-                              } else if (errorMessage.toLowerCase().includes("authorization")) {
-                                toastDescription += ` An "Invalid Argument Authorization" error for the URL typically means the R2 object is private. Please check R2 permissions.`;
+                                toastDescription = `Video format or codec for "${att.name}" is not supported by your browser, or the file might be corrupted. Please try a different video format (e.g., common MP4 H.264). Also ensure the object is publicly readable in R2.`;
+                              } else if (errorMessage.toLowerCase().includes("authorization") || (errorTarget.error && !errorCode)) { // Some browsers might not set a code for auth errors on video
+                                toastDescription = `Could not load video: ${att.name}. This often indicates an "Invalid Argument Authorization" or similar access error, meaning the R2 object is private. Please check R2 permissions and ensure objects are publicly readable.`;
                               } else {
-                                toastDescription += ` Browser error: ${errorMessage} (Code: ${errorCode}).`;
+                                toastDescription += ` Browser error: ${errorMessage} (Code: ${errorCode}). Also ensure the object is publicly readable in R2.`;
                               }
                               toast({
                                 title: "Video Load Error",
@@ -455,14 +472,15 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
                     </Card>
                   ))}
                 </div>
-                 <div className="mt-3 text-xs text-muted-foreground flex items-start gap-1.5 p-2 border border-dashed rounded-md">
-                    <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-                    <span>
-                        If attachments are not displaying correctly, please ensure objects in your R2 bucket (especially under the 'uploads/' prefix) are set to **publicly readable**. 
-                        An "Invalid Argument Authorization" error for the URL typically means the R2 object is private.
-                        Also, verify your R2 bucket's CORS policy allows GET requests from this application's origin.
-                    </span>
-                </div>
+                 {!attachmentLoadErrorOccurred && (
+                    <div className="mt-3 text-xs text-muted-foreground flex items-start gap-1.5 p-2 border border-dashed rounded-md">
+                        <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                        <span>
+                            If attachments are not displaying correctly, please ensure objects in your R2 bucket (especially under the 'uploads/' prefix) are set to **publicly readable**.
+                            Also, verify your R2 bucket's CORS policy allows GET requests from this application's origin.
+                        </span>
+                    </div>
+                 )}
               </div>
             )}
 
@@ -592,6 +610,8 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
     </div>
   );
 }
+    
+
     
 
     
