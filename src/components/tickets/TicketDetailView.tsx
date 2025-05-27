@@ -91,8 +91,6 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
     if (typeof window !== 'undefined') {
       return `${window.location.origin}/dashboard/tickets/${ticket.id}`;
     }
-    // Fallback for server-side rendering, though it's less critical for email content generation
-    // that mostly happens on client actions. Consider if a more robust SSR base URL is needed.
     return `/dashboard/tickets/${ticket.id}`;
   };
 
@@ -132,7 +130,6 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
           recipients.push({ email: workerProfile.email, name: workerProfile.displayName || ticket.assignedToName || 'Agent' });
         }
       }
-      // Ensure unique recipients
       recipients = recipients.filter((r, index, self) =>
         index === self.findIndex((t) => t.email === r.email && r.email != null)
       );
@@ -182,18 +179,13 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
         emailSubject = `Your FireDesk Ticket '${ticket.title}' (#${shortTicketId}) Has Been Closed`;
         emailHtmlContent = `<p>Dear ${ticketCreatorName},</p><p>Your ticket <strong>${ticket.title}</strong> (#${shortTicketId}) has been <strong>Closed</strong> by ${currentUserProfile.displayName || 'Support'}.</p><p>We hope your issue was resolved to your satisfaction. If you have any further questions, please feel free to submit a new ticket.</p>${getStandardFooter()}`;
       } else if (newStatus === 'Resolved') {
-        // This path is now primarily for when a user themselves mark their own 'Resolved' ticket to 'Resolved' again (which shouldn't happen via UI)
-        // or if an admin/worker directly changes status to Resolved without solution dialog (less common now).
-        // The main "Resolved" email (with solution) is handled by onTicketResolved.
         emailSubject = `FireDesk Ticket Status Updated: ${ticket.title} (#${shortTicketId}) is Now Resolved`;
-        emailHtmlContent = `<p>Dear ${ticketCreatorName},</p><p>The status of your ticket <strong>${ticket.title}</strong> (#${shortTicketId}) has been updated to <strong>Resolved</strong> by ${currentUserProfile.displayName || 'Support'}.</p><p>Please review the solution provided. If the issue persists, you can reply to the ticket to re-open it.</p>${getStandardFooter()}`;
+        emailHtmlContent = `<p>Dear ${ticketCreatorName},</p><p>The status of your ticket <strong>${ticket.title}</strong> (#${shortTicketId}) has been updated to <strong>Resolved</strong> by ${currentUserProfile.displayName || 'Support'}.</p><p>Please review the solution provided. If the issue persists, you can reply to the ticket.</p>${getStandardFooter()}`;
       } else { 
         emailSubject = `FireDesk Ticket Status Updated: ${ticket.title} (#${shortTicketId}) to ${newStatus}`;
         emailHtmlContent = `<p>Dear ${ticketCreatorName},</p><p>The status of your ticket <strong>${ticket.title}</strong> (#${shortTicketId}) has been updated to <strong>${newStatus}</strong> by ${currentUserProfile.displayName || 'Support'}.</p>${getStandardFooter()}`;
       }
-
-      // Only send if the ticket creator is not the one making the change,
-      // and it's a 'Closed' status change, or a direct 'Resolved' not via dialog.
+      
       if (ticket.createdBy !== currentUserProfile.uid && (newStatus === 'Closed' || (newStatus === 'Resolved' && !showResolveDialog) )) {
         const creatorProfile = await getUserProfile(ticket.createdBy);
         if (creatorProfile?.email) {
@@ -279,7 +271,6 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
       toast({ title: "Ticket Assigned", description: `Ticket assigned to ${workerName}.` });
       const shortTicketId = ticket.id.substring(0,8);
 
-      // Notify the assigned worker
       const workerProfile = await getUserProfile(workerId);
       if (workerProfile?.email) {
         console.log(`[EmailDebug] Worker profile found for assignment email: ${workerProfile.email}. Sending email.`);
@@ -292,7 +283,6 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
          console.log(`[EmailDebug] Worker profile or email not found for ${workerId}. Skipping assignment email to worker.`);
       }
 
-      // Notify the ticket creator (if they are not the one assigning and not the one being assigned)
        if (ticket.createdBy !== currentUserProfile.uid && ticket.createdBy !== workerId) {
         const creatorProfile = await getUserProfile(ticket.createdBy);
         if (creatorProfile?.email) {
@@ -318,7 +308,6 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
   const handleDeleteTicket = async () => {
     setIsDeletingTicket(true);
     try {
-      // Attempt to delete main ticket attachments from R2
       if (ticket.attachments && ticket.attachments.length > 0) {
         console.log(`[TicketDelete] Deleting ${ticket.attachments.length} R2 attachments for ticket ${ticket.id}`);
         const deletionPromises = ticket.attachments.map(async (att) => {
@@ -340,7 +329,7 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
                   duration: 7000,
                 });
               } else {
-                console.log(`[TicketDelete] Successfully deleted R2 attachment ${att.fileKey} (name: ${att.name}) for ticket ${ticket.id}`);
+                 console.log(`[TicketDelete] Successfully deleted R2 attachment ${att.fileKey} (name: ${att.name}) for ticket ${ticket.id}`);
               }
             } catch (r2Error) {
               console.error(`[TicketDelete] Network or other error calling R2 delete API for ${att.fileKey} (name: ${att.name}):`, r2Error);
@@ -358,7 +347,6 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
         await Promise.allSettled(deletionPromises);
       }
 
-      // Attempt to delete solution attachments from R2
       if (ticket.solution?.attachments && ticket.solution.attachments.length > 0) {
         console.log(`[TicketDelete] Deleting ${ticket.solution.attachments.length} R2 solution attachments for ticket ${ticket.id}`);
         const solutionDeletionPromises = ticket.solution.attachments.map(async (att) => {
@@ -391,9 +379,8 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
     } catch (error) {
       console.error("Error during the overall ticket deletion process:", error);
       toast({ title: "Ticket Deletion Error", description: "Failed to delete the ticket from Firestore. Please try again or check server logs.", variant: "destructive" });
-      setIsDeletingTicket(false); // Only reset if Firestore deletion itself fails
+      setIsDeletingTicket(false);
     }
-    // No finally here, as navigation should happen on success
   };
 
   const handleTranslateDescription = async () => {
@@ -437,7 +424,6 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
     }
 
     setIsTranslatingSolution(true);
-    // Basic language detection
     const isLikelyJapanese = /[\u3000-\u303f\u3040-\u309f\u30a0-\u30ff\uff00-\uff9f\u4e00-\u9faf\u3400-\u4dbf]/.test(ticket.solution.text);
     const targetLanguage = isLikelyJapanese ? "English" : "Japanese";
     const sourceLanguage = isLikelyJapanese ? "Japanese" : "English";
@@ -450,7 +436,7 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
       };
       const result = await translateText(input);
       setTranslatedSolutionText(result.translatedText);
-      setShowOriginalSolution(false); // Show the new translation
+      setShowOriginalSolution(false);
     } catch (error) {
       console.error("Error translating solution:", error);
       toast({ title: "Translation Error", description: "Could not translate the solution text.", variant: "destructive" });
@@ -564,7 +550,7 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
                     width={300}
                     height={200}
                     className="object-contain w-full h-auto max-h-60"
-                    unoptimized={true} // Set to true if R2 isn't configured for Next/Image optimization or to bypass potential issues
+                    unoptimized={true}
                     onError={(e) => {
                       setAttachmentLoadErrorOccurred(true);
                       console.error(`[TicketDetailView] Failed to load image: ${att.url}.`);
@@ -597,7 +583,6 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
                       if (errorCode === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) { 
                         toastDescription = `Video format or codec for "${att.name}" is not supported by your browser, or the file might be corrupted. Please try a different video format (e.g., common MP4 H.264). Also ensure the R2 object is publicly readable and the content type is correct (e.g., 'video/mp4').`;
                       } else if (errorMessage.toLowerCase().includes("authorization") || (errorTarget.error && !errorCode)) {
-                        // This condition might be hit if the browser gets a generic network error due to CORS/Permissions before specific media error codes
                         toastDescription = `Could not load video: ${att.name}. This often indicates an "Invalid Argument Authorization" or similar access error, meaning the R2 object is private. Please check R2 public access permissions and ensure objects are publicly readable.`;
                       } else {
                         toastDescription += ` Browser error: ${errorMessage} (Code: ${errorCode}). Ensure the R2 object is publicly readable and the content type is correctly set in R2.`;
@@ -730,7 +715,7 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
           </CardContent>
         </Card>
 
-        {ticket.status !== 'Closed' && !(ticket.status === 'Resolved' && isTicketCreator) && (
+        {ticket.status !== 'Closed' && (
           <Card className="shadow-md">
             <CardHeader>
               <CardTitle className="text-xl flex items-center"><Edit3 className="mr-2 h-5 w-5" /> Add Your Reply</CardTitle>
@@ -774,7 +759,7 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
                     </p>
                     <ul className="list-disc list-inside text-sm space-y-1 text-muted-foreground">
                         <li>If the solution addresses your issue, please click the button below to close your ticket.</li>
-                        <li>If you are still experiencing problems, add a reply to this ticket (using the reply box above if available, or by creating a new one if not), and the ticket status will be automatically re-opened for further assistance.</li>
+                        <li>If you are still experiencing problems, please add a reply above to discuss further with the support agent.</li>
                     </ul>
                     <Button 
                         onClick={() => handleStatusChange('Closed')} 
@@ -906,3 +891,5 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
     </div>
   );
 }
+
+    
