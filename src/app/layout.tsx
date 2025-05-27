@@ -6,7 +6,7 @@ import { AuthProvider } from '@/components/auth/AuthProvider';
 import { Toaster } from '@/components/ui/toaster';
 import { I18nProviderClient } from '@/lib/i18n/client';
 import { getI18n, getCurrentLocale } from '@/lib/i18n/server';
-
+import { locales, defaultLocale } from '@/lib/i18n/settings'; // Import defaultLocale
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -42,12 +42,23 @@ export default async function RootLayout({ // Made this async
   children: React.ReactNode;
   params: { locale: string }; 
 }>) {
-  const currentLocale = await getCurrentLocale(); // Await the result
+  let effectiveLocale = paramsLocale;
+
+  // Validate or determine locale
+  if (!locales.includes(effectiveLocale as any)) {
+    effectiveLocale = await getCurrentLocale(); // Await the result
+  }
+  
+  // Final fallback if somehow still invalid, though getCurrentLocale should handle it
+  if (!locales.includes(effectiveLocale as any)) {
+    effectiveLocale = defaultLocale;
+  }
+  
   return (
-    <html lang={currentLocale} suppressHydrationWarning>
+    <html lang={effectiveLocale} suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        {/* Use the resolved currentLocale for the I18nProviderClient */}
-        <I18nProviderClient locale={currentLocale}>
+        {/* Use the resolved effectiveLocale for the I18nProviderClient */}
+        <I18nProviderClient locale={effectiveLocale}>
           <AuthProvider>
             {children}
             <Toaster />
