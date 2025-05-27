@@ -5,8 +5,7 @@ import type { User } from 'firebase/auth';
 import { onAuthStateChanged, signInWithPopup, signOut as firebaseSignOut } from 'firebase/auth';
 import type { FirebaseError } from 'firebase/app';
 import { doc, getDoc, serverTimestamp, setDoc, Timestamp } from 'firebase/firestore';
-import { usePathname } from 'next/navigation';
-import { useRouter } from 'next-international/client'; 
+import { usePathname as useNextPathname, useRouter } from 'next/navigation'; // Use from next/navigation
 import { useCurrentLocale } from '@/lib/i18n/client';
 import type { ReactNode} from 'react';
 import React, { createContext, useContext, useEffect, useState } from 'react';
@@ -31,7 +30,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
   const [isSigningIn, setIsSigningIn] = useState(false);
   const router = useRouter();
-  const pathname = usePathname(); // next/navigation for raw path
+  const pathname = useNextPathname(); // next/navigation for raw path
   const currentLocale = useCurrentLocale();
   const { toast } = useToast();
 
@@ -70,7 +69,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             }
           }
           
-          const unlocalizedPathname = pathname.replace(`/${currentLocale}`, '') || '/';
+          const unlocalizedPathname = pathname.startsWith(`/${currentLocale}/`) && currentLocale !== 'en' 
+            ? pathname.substring(`/${currentLocale}`.length) 
+            : pathname;
+
           if (unlocalizedPathname === '/login' || unlocalizedPathname === '/') {
             router.replace('/dashboard');
           }
@@ -78,7 +80,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           setUser(null);
           setUserProfile(null);
           
-          const unlocalizedPathname = pathname.replace(`/${currentLocale}`, '') || '/';
+          const unlocalizedPathname = pathname.startsWith(`/${currentLocale}/`) && currentLocale !== 'en'
+            ? pathname.substring(`/${currentLocale}`.length)
+            : pathname;
+            
           if (unlocalizedPathname !== '/login' && !pathname.startsWith('/_next/') && unlocalizedPathname !== '/') {
              router.replace('/login');
           }
@@ -174,15 +179,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const signOut = async () => {
-    if (loading) return; // Prevent sign out if initial loading is not complete
+    if (loading) return; 
     
-    setLoading(true); // Indicate sign-out process is starting
+    setLoading(true); 
     
     try {
       await firebaseSignOut(auth);
       setUser(null);
       setUserProfile(null);
-      router.replace('/login'); // Redirect to login page after sign out
+      router.replace('/login'); 
       toast({ 
         title: 'Signed Out', 
         description: "You have been successfully signed out.",
@@ -197,12 +202,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         variant: 'destructive',
       });
     } finally {
-      setLoading(false); // Reset loading state after sign-out attempt
+      setLoading(false); 
     }
   };
   
-  const unlocalizedPathname = pathname.replace(`/${currentLocale}`, '') || '/';
-  if (loading && !isSigningIn && !unlocalizedPathname.startsWith('/login') && unlocalizedPathname !== '/') {
+  const unlocalizedPathnameCheck = pathname.startsWith(`/${currentLocale}/`) && currentLocale !== 'en'
+    ? pathname.substring(`/${currentLocale}`.length)
+    : pathname;
+
+  if (loading && !isSigningIn && !unlocalizedPathnameCheck.startsWith('/login') && unlocalizedPathnameCheck !== '/') {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <LoadingSpinner size="lg" />

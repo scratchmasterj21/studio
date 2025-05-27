@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect } from 'react';
-import { useRouter } from 'next-international/client'; 
+import { useRouter } from 'next/navigation'; // Use from next/navigation
 import { useCurrentLocale, useI18n } from '@/lib/i18n/client';
 import { SignInButton } from '@/components/auth/SignInButton';
 import { useAuth } from '@/components/auth/AuthProvider';
@@ -17,7 +17,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (!loading && user) {
-      router.replace('/dashboard'); // next-international router handles locale
+      router.replace('/dashboard'); 
     }
   }, [user, loading, router, currentLocale]);
 
