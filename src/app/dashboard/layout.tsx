@@ -2,9 +2,7 @@
 "use client";
 
 import { useEffect } from 'react';
-import { useRouter } from 'next/navigation'; // Use from next/navigation
-import { usePathname as useNextPathname } from 'next/navigation';
-import { useCurrentLocale, useI18n } from '@/lib/i18n/client';
+import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { AppHeader } from '@/components/layout/AppHeader';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
@@ -16,15 +14,13 @@ export default function DashboardLayout({
 }) {
   const { user, userProfile, loading } = useAuth();
   const router = useRouter();
-  const t = useI18n();
-  const nextPathname = useNextPathname(); // Raw pathname
-  const currentLocale = useCurrentLocale();
+  const pathname = usePathname();
 
   useEffect(() => {
     if (!loading && !user) {
       router.replace('/login');
     }
-  }, [user, loading, router, currentLocale]);
+  }, [user, loading, router]);
 
   if (loading || !user || !userProfile) {
     return (
@@ -34,13 +30,7 @@ export default function DashboardLayout({
     );
   }
   
-  // Remove locale prefix for non-default locales to check against base paths
-  const basePath = nextPathname.startsWith(`/${currentLocale}/`) && currentLocale !== 'en'
-    ? nextPathname.substring(`/${currentLocale}`.length)
-    : nextPathname;
-
-  if (basePath.startsWith('/login')) {
-     // If somehow user is authenticated but on login page (e.g. browser back button), redirect
+  if (pathname.startsWith('/login')) {
      router.replace('/dashboard');
      return (
         <div className="flex min-h-screen items-center justify-center">
@@ -49,7 +39,6 @@ export default function DashboardLayout({
      );
   }
 
-
   return (
     <div className="flex min-h-screen flex-col">
       <AppHeader />
@@ -57,7 +46,7 @@ export default function DashboardLayout({
         {children}
       </main>
       <footer className="py-6 text-center text-sm text-muted-foreground border-t">
-         {t('footer.copyrightYear', { year: new Date().getFullYear() })}
+         FireDesk © {new Date().getFullYear()}
       </footer>
     </div>
   );

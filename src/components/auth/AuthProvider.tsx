@@ -5,8 +5,7 @@ import type { User } from 'firebase/auth';
 import { onAuthStateChanged, signInWithPopup, signOut as firebaseSignOut } from 'firebase/auth';
 import type { FirebaseError } from 'firebase/app';
 import { doc, getDoc, serverTimestamp, setDoc, Timestamp } from 'firebase/firestore';
-import { usePathname as useNextPathname, useRouter } from 'next/navigation'; // Use from next/navigation
-import { useCurrentLocale } from '@/lib/i18n/client';
+import { usePathname, useRouter } from 'next/navigation';
 import type { ReactNode} from 'react';
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { auth, db, googleProvider } from '@/lib/firebase';
@@ -30,8 +29,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
   const [isSigningIn, setIsSigningIn] = useState(false);
   const router = useRouter();
-  const pathname = useNextPathname(); // next/navigation for raw path
-  const currentLocale = useCurrentLocale();
+  const pathname = usePathname();
   const { toast } = useToast();
 
   useEffect(() => {
@@ -46,7 +44,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           if (userSnap.exists()) {
             setUserProfile(userSnap.data() as UserProfile);
           } else {
-            // Create new user profile
             const newUserProfile: UserProfile = {
               uid: firebaseUser.uid,
               email: firebaseUser.email,
@@ -69,22 +66,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             }
           }
           
-          const unlocalizedPathname = pathname.startsWith(`/${currentLocale}/`) && currentLocale !== 'en' 
-            ? pathname.substring(`/${currentLocale}`.length) 
-            : pathname;
-
-          if (unlocalizedPathname === '/login' || unlocalizedPathname === '/') {
+          if (pathname === '/login' || pathname === '/') {
             router.replace('/dashboard');
           }
         } else {
           setUser(null);
           setUserProfile(null);
-          
-          const unlocalizedPathname = pathname.startsWith(`/${currentLocale}/`) && currentLocale !== 'en'
-            ? pathname.substring(`/${currentLocale}`.length)
-            : pathname;
             
-          if (unlocalizedPathname !== '/login' && !pathname.startsWith('/_next/') && unlocalizedPathname !== '/') {
+          if (pathname !== '/login' && !pathname.startsWith('/_next/') && pathname !== '/') {
              router.replace('/login');
           }
         }
@@ -98,16 +87,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     });
 
     return () => unsubscribe();
-  }, [router, toast, pathname, currentLocale]);
+  }, [router, toast, pathname]);
 
   const signInWithGoogle = async () => {
     if (isSigningIn) {
       console.log('Sign-in already in progress...');
       return;
     }
-    
     setIsSigningIn(true);
-    
     try {
       const result = await signInWithPopup(auth, googleProvider);
       console.log('Successfully signed in:', result.user.email);
@@ -180,9 +167,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const signOut = async () => {
     if (loading) return; 
-    
     setLoading(true); 
-    
     try {
       await firebaseSignOut(auth);
       setUser(null);
@@ -206,11 +191,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
   
-  const unlocalizedPathnameCheck = pathname.startsWith(`/${currentLocale}/`) && currentLocale !== 'en'
-    ? pathname.substring(`/${currentLocale}`.length)
-    : pathname;
-
-  if (loading && !isSigningIn && !unlocalizedPathnameCheck.startsWith('/login') && unlocalizedPathnameCheck !== '/') {
+  if (loading && !isSigningIn && !pathname.startsWith('/login') && pathname !== '/') {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <LoadingSpinner size="lg" />

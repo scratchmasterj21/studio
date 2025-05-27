@@ -1,7 +1,7 @@
 
 "use client";
 
-import { Link } from 'next-international/link';
+import Link from 'next/link';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import {
@@ -17,25 +17,23 @@ import { useAuth } from '@/components/auth/AuthProvider';
 import { SignOutButton } from '@/components/auth/SignOutButton';
 import { LayoutGrid, PlusCircle, Ticket as TicketIcon, UserCircle, Users as UsersIcon, ShieldCheck } from 'lucide-react';
 import type { UserProfile } from '@/lib/types';
-import LanguageSwitcher from '@/components/common/LanguageSwitcher';
-import { useI18n } from '@/lib/i18n/client';
 
 interface NavLink {
   href: string;
-  labelKey: keyof typeof import('@/locales/en').default.header; // Adjust for your translation file structure
+  label: string; 
   icon: React.ReactNode;
   roles?: UserProfile['role'][];
 }
 
 export function AppHeader() {
   const { user, userProfile } = useAuth();
-  const t = useI18n();
 
+  // Using hardcoded English strings
   const navLinks: NavLink[] = [
-    { href: '/dashboard', labelKey: 'myTickets', icon: <LayoutGrid className="h-4 w-4" />, roles: ['user', 'worker', 'admin'] },
-    { href: '/dashboard/tickets/new', labelKey: 'newTicket', icon: <PlusCircle className="h-4 w-4" />, roles: ['user', 'admin'] },
-    { href: '/dashboard/admin', labelKey: 'adminOverview', icon: <ShieldCheck className="h-4 w-4" />, roles: ['admin'] },
-    { href: '/dashboard/admin/users', labelKey: 'manageUsers', icon: <UsersIcon className="h-4 w-4" />, roles: ['admin'] },
+    { href: '/dashboard', label: 'My Tickets', icon: <LayoutGrid className="h-4 w-4" />, roles: ['user', 'worker', 'admin'] },
+    { href: '/dashboard/tickets/new', label: 'New Ticket', icon: <PlusCircle className="h-4 w-4" />, roles: ['user', 'admin'] },
+    { href: '/dashboard/admin', label: 'Admin Overview', icon: <ShieldCheck className="h-4 w-4" />, roles: ['admin'] },
+    { href: '/dashboard/admin/users', label: 'Manage Users', icon: <UsersIcon className="h-4 w-4" />, roles: ['admin'] },
   ];
 
   const getInitials = (name?: string | null) => {
@@ -52,7 +50,7 @@ export function AppHeader() {
       <div className="container flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8">
         <Link href="/dashboard" className="flex items-center gap-2 text-lg font-semibold text-primary">
           <TicketIcon className="h-7 w-7" />
-          <span>{t('header.firedesk')}</span>
+          <span>FireDesk</span>
         </Link>
         
         <div className="flex items-center space-x-1 md:space-x-2">
@@ -61,13 +59,13 @@ export function AppHeader() {
               <Button key={link.href} variant="ghost" asChild>
                 <Link href={link.href} className="flex items-center gap-1.5">
                   {link.icon}
-                  {t(`header.${link.labelKey}`)}
+                  {link.label}
                 </Link>
               </Button>
             ))}
           </nav>
 
-          <LanguageSwitcher />
+          {/* LanguageSwitcher removed */}
 
           {user && userProfile ? (
             <DropdownMenu>
@@ -89,9 +87,9 @@ export function AppHeader() {
                 <DropdownMenuSeparator />
                 <DropdownMenuGroup>
                   <DropdownMenuItem asChild>
-                    <Link href="/dashboard/profile"> 
+                    <Link href="/dashboard/profile"> {/* TODO: Create this page later */}
                       <UserCircle className="mr-2 h-4 w-4" />
-                      {t('header.profile')}
+                      Profile
                     </Link>
                   </DropdownMenuItem>
                   {userProfile.role === 'admin' && (
@@ -99,13 +97,13 @@ export function AppHeader() {
                       <DropdownMenuItem asChild>
                          <Link href="/dashboard/admin">
                           <ShieldCheck className="mr-2 h-4 w-4" />
-                          {t('header.adminOverview')}
+                          Admin Overview
                         </Link>
                       </DropdownMenuItem>
                       <DropdownMenuItem asChild>
                          <Link href="/dashboard/admin/users">
                           <UsersIcon className="mr-2 h-4 w-4" />
-                          {t('header.manageUsers')}
+                          Manage Users
                         </Link>
                       </DropdownMenuItem>
                     </>
@@ -117,7 +115,7 @@ export function AppHeader() {
             </DropdownMenu>
           ) : (
             <Button variant="outline" asChild>
-              <Link href="/login">{t('header.signIn')}</Link>
+              <Link href="/login">Sign In</Link>
             </Button>
           )}
         </div>
