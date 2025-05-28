@@ -63,8 +63,8 @@ interface TicketFormProps {
 }
 
 // IMPORTANT: Replace these placeholder values in src/lib/firestore.ts with the actual UID and display name of your default support agent.
-const DEFAULT_WORKER_UID = "JoKT2FdbqzczhTQf5KumE865Tdh2"; 
-// const DEFAULT_WORKER_NAME = "Default Support Agent"; // This is defined in firestore.ts
+const DEFAULT_WORKER_UID = "YNTAZdX8ClcRr3bAgf1WED1dE393"; 
+// const DEFAULT_WORKER_NAME = "John Carlo Limpiada"; // This is defined in firestore.ts
 
 export default function TicketForm({ userProfile }: TicketFormProps) {
   const { toast } = useToast();
@@ -127,16 +127,18 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
   const handleFileUpload = async (fileEntry: UploadableFile) => {
     const { file, id: fileId } = fileEntry;
 
-    setUploadableFiles(prevFiles => {
-      const currentFileInState = prevFiles.find(uf => uf.id === fileId);
-      if (currentFileInState && (currentFileInState.status === 'uploading' || currentFileInState.status === 'success')) {
-          console.log(`[FileUpload] Skipped upload for ${file.name}: Status is ${currentFileInState.status}.`);
-          return prevFiles;
-      }
-      return prevFiles.map(uf =>
-          uf.id === fileId ? { ...uf, status: 'uploading', progress: 0, error: undefined } : uf
-      );
-    });
+    setUploadableFiles(prevFiles =>
+      prevFiles.map(uf => {
+        if (uf.id === fileId) {
+          if (uf.status === 'uploading' || uf.status === 'success') {
+            console.log(`[FileUpload] Skipped upload for ${file.name}: Status is ${uf.status}.`);
+            return uf;
+          }
+          return { ...uf, status: 'uploading', progress: 0, error: undefined };
+        }
+        return uf;
+      })
+    );
     
     console.log(`[FileUpload] Starting upload for: ${file.name}, Type: ${file.type}, Size: ${file.size}`);
 
@@ -149,8 +151,14 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
 
       if (!presignedUrlResponse.ok) {
         const errorBody = await presignedUrlResponse.text();
-        const parsedError = JSON.parse(errorBody || '{}');
+        let parsedError = {};
+        try {
+            parsedError = JSON.parse(errorBody || '{}');
+        } catch (e) {
+            console.warn("[FileUpload] Could not parse error response from presigned URL endpoint as JSON:", errorBody);
+        }
         console.error(`[FileUpload] Failed to get presigned URL for ${file.name}. Status: ${presignedUrlResponse.status}, Body: ${errorBody}`);
+        // @ts-ignore
         throw new Error(parsedError.error || `Failed to get presigned URL. Status: ${presignedUrlResponse.status}`);
       }
       const { presignedUrl, fileKey, publicUrl } = await presignedUrlResponse.json();
@@ -191,9 +199,9 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
     } catch (error: any) {
       console.error(`[FileUpload] Error during upload process for ${file.name}:`, error);
       
-      let detailedErrorMessage = "Failed to upload file. Check your network connection.";
+      let detailedErrorMessage = "Failed to upload file. Check your network connection and R2 CORS settings.";
       if (error.message && error.message.toLowerCase().includes('failed to fetch')) {
-        detailedErrorMessage = "Upload failed. This could be a network issue or a CORS configuration problem with the storage provider (Cloudflare R2). Please check your browser console for more details and ensure R2 CORS settings allow PUT requests from this origin.";
+        detailedErrorMessage = `Upload failed for ${file.name}. This could be a network issue or a CORS configuration problem with Cloudflare R2. Please check your browser console for details and ensure R2 CORS settings allow PUT requests from this origin.`;
       } else if (error.message) {
         detailedErrorMessage = error.message;
       }
@@ -253,7 +261,7 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
              <p><strong>Description:</strong> ${values.description.replace(/\n/g, '<br>')}</p>
              <p><strong>Category:</strong> ${values.category}</p>
              <p><strong>Priority:</strong> ${values.priority}</p>
-             <p>It has been automatically assigned and is now In Progress.</p>
+             <p>It has been automatically assigned and its status is Open.</p>
              ${successfulUploads.length > 0 ? `<p><strong>Attachments:</strong> ${successfulUploads.map(att => att.name).join(', ')}</p>` : ''}
              <p>We will get back to you as soon as possible.</p>
              ${standardFooter}
@@ -278,7 +286,7 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
             </div>
             <p><strong>Category:</strong> ${values.category}</p>
             <p><strong>Priority:</strong> ${values.priority}</p>
-            <p><strong>This ticket has been automatically assigned to the default agent and set to 'In Progress'.</strong></p>
+            <p><strong>This ticket has been automatically assigned to the default agent and its status is Open.</strong></p>
             ${successfulUploads.length > 0 ? `<p><strong>Attachments:</strong> ${successfulUploads.map(att => `<a href="${att.url}">${att.name}</a>`).join(', ')}</p>` : ''}
             ${standardFooter}
           `,
@@ -302,7 +310,7 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
                     <div style="padding: 10px; border-left: 3px solid #eee; margin: 10px 0;">
                         <p style="margin:0;">${values.description.replace(/\n/g, '<br>')}</p>
                     </div>
-                    <p>The ticket status is 'In Progress'. Please review and take action.</p>
+                    <p>The ticket status is 'Open'. Please review and take action.</p>
                     ${successfulUploads.length > 0 ? `<p><strong>Attachments:</strong> ${successfulUploads.map(att => `<a href="${att.url}">${att.name}</a>`).join(', ')}</p>` : ''}
                     ${standardFooter}
                 `,
@@ -525,3 +533,5 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
     </Form>
   );
 }
+
+    
