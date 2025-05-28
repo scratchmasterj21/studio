@@ -26,7 +26,7 @@ import type { Ticket, TicketMessage, TicketStatus, UserProfile, UserRole, Attach
 import { ticketStatuses } from '@/config/site';
 
 // --- Default Worker Configuration ---
-const DEFAULT_WORKER_UID = "JoKT2FdbqzczhTQf5KumE865Tdh2";
+const DEFAULT_WORKER_UID = "YNTAZdX8ClcRr3bAgf1WED1dE393";
 const DEFAULT_WORKER_NAME = "John Carlo Limpiada";
 
 // User Profile Functions
