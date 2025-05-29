@@ -26,8 +26,9 @@ import type { Ticket, TicketMessage, TicketStatus, UserProfile, UserRole, Attach
 import { ticketStatuses } from '@/config/site';
 
 // --- Default Worker Configuration ---
-const DEFAULT_WORKER_UID = "YNTAZdX8ClcRr3bAgf1WED1dE393";
-const DEFAULT_WORKER_NAME = "John Carlo Limpiada";
+// IMPORTANT: Replace these placeholder values with the actual UID and display name of your default support agent.
+const DEFAULT_WORKER_UID = "YNTAZdX8ClcRr3bAgf1WED1dE393"; // Placeholder, REPLACE THIS
+const DEFAULT_WORKER_NAME = "John Carlo Limpiada"; // Placeholder, REPLACE THIS (or fetch dynamically)
 
 // User Profile Functions
 export const createUserProfile = async (userAuth: any, additionalData = {}): Promise<void> => {
@@ -84,6 +85,9 @@ export const getAssignableAgents = (callback: (users: UserProfile[]) => void): U
       uid: docSnap.id,
     } as UserProfile));
     callback(users);
+  }, (error) => {
+    console.error("Error in getAssignableAgents snapshot listener:", error);
+    callback([]); // Return empty array on error
   });
 };
 
@@ -109,6 +113,9 @@ export const getAllUsers = (callback: (users: UserProfile[]) => void): Unsubscri
       } as UserProfile;
     });
     callback(users);
+  }, (error) => {
+    console.error("Error in getAllUsers snapshot listener:", error);
+    callback([]); // Return empty array on error
   });
 };
 
@@ -122,12 +129,11 @@ export const createTicket = async (
 
   let assignedTo: string | undefined = undefined;
   let assignedToName: string | undefined = undefined;
-  let status: TicketStatus = 'Open'; // Default status is Open, even if assigned
-
+  
+  // Check if DEFAULT_WORKER_UID is a placeholder or a real UID
   if (DEFAULT_WORKER_UID && DEFAULT_WORKER_UID !== "REPLACE_WITH_DEFAULT_WORKER_UID") {
     assignedTo = DEFAULT_WORKER_UID;
-    assignedToName = DEFAULT_WORKER_NAME;
-    // Status remains 'Open'
+    assignedToName = DEFAULT_WORKER_NAME; // Consider fetching this dynamically if names change
   }
 
   const newTicket = {
@@ -135,7 +141,7 @@ export const createTicket = async (
     description: ticketData.description,
     category: ticketData.category,
     priority: ticketData.priority,
-    status: status,
+    status: 'Open' as TicketStatus, // New tickets are Open, even if auto-assigned
     createdBy: createdByProfile.uid,
     createdByName: createdByProfile.displayName || createdByProfile.email || 'Unknown User',
     assignedTo: assignedTo,
@@ -151,7 +157,7 @@ export const createTicket = async (
 };
 
 const mapDocToTicket = (docSnap: DocumentSnapshot<DocumentData>): Ticket => {
-  const data = docSnap.data() as any;
+  const data = docSnap.data() as any; // Use 'any' temporarily for easier data access
   let solutionData = null;
   if (data.solution) {
     solutionData = {
@@ -173,8 +179,8 @@ const mapDocToTicket = (docSnap: DocumentSnapshot<DocumentData>): Ticket => {
     createdByName: data.createdByName || 'Unknown User',
     assignedTo: data.assignedTo,
     assignedToName: data.assignedToName,
-    createdAt: data.createdAt,
-    updatedAt: data.updatedAt,
+    createdAt: data.createdAt, // Keep as Firestore Timestamp
+    updatedAt: data.updatedAt, // Keep as Firestore Timestamp
     messages: data.messages?.map((msg: any) => ({
         ...msg,
         timestamp: msg.timestamp && typeof msg.timestamp.toDate === 'function' ? msg.timestamp : (msg.timestamp && msg.timestamp.seconds ? new Timestamp(msg.timestamp.seconds, msg.timestamp.nanoseconds) : Timestamp.now())
@@ -202,7 +208,8 @@ export const onTicketsUpdate = (
     }
   } else if (userProfile.role === 'worker') {
     qConstraints.push(where('assignedTo', '==', userProfile.uid));
-    qConstraints.push(where('status', 'not-in', ['Closed', 'Resolved'])); // Workers primarily see active tickets
+    // Workers see all their assigned tickets, sort/filter client-side for active vs resolved/closed for now
+    // qConstraints.push(where('status', 'not-in', ['Closed', 'Resolved']));
   } else { // user role
     qConstraints.push(where('createdBy', '==', userProfile.uid));
   }
@@ -226,22 +233,30 @@ export const onTicketByIdUpdate = (ticketId: string, callback: (ticket: Ticket |
   });
 };
 
-export const updateTicketStatus = async (ticketId: string, newStatus: TicketStatus): Promise<void> => {
+export const updateTicketStatus = async (
+  ticketId: string,
+  newStatus: TicketStatus,
+  currentUserProfile: UserProfile // Added for context if needed for solution clearing logic
+): Promise<void> => {
   const ticketRef = doc(db, 'tickets', ticketId);
   const updateData: { status: TicketStatus; updatedAt: FieldValue; solution?: Solution | null } = {
     status: newStatus,
     updatedAt: serverTimestamp(),
   };
 
-  // If moving AWAY from Resolved to an active state (Open or In Progress), clear the solution and delete its attachments
+  // If moving AWAY from Resolved to an active state (Open or In Progress) by a worker/admin,
+  // clear the solution and delete its attachments.
   if ((newStatus === 'Open' || newStatus === 'In Progress')) {
     try {
       const ticketSnap = await getDoc(ticketRef);
       if (ticketSnap.exists()) {
         const ticketData = ticketSnap.data() as Ticket;
         // Only clear solution if the *previous* status was Resolved
-        if (ticketData.status === 'Resolved' && ticketData.solution) { 
-          console.log(`[UpdateStatus] Ticket ${ticketId} manually moved from Resolved. Attempting to delete ${ticketData.solution.attachments?.length || 0} solution attachments from R2.`);
+        // And if the current user is a worker/admin making this change
+        if (ticketData.status === 'Resolved' && ticketData.solution && 
+            (currentUserProfile.role === 'admin' || (currentUserProfile.role === 'worker' && ticketData.assignedTo === currentUserProfile.uid))
+           ) { 
+          console.log(`[UpdateStatus] Ticket ${ticketId} manually moved from Resolved to ${newStatus} by ${currentUserProfile.role}. Attempting to delete ${ticketData.solution.attachments?.length || 0} solution attachments from R2.`);
           if (ticketData.solution.attachments && ticketData.solution.attachments.length > 0) {
             const deletionPromises = ticketData.solution.attachments.map(async (att) => {
               if (att.fileKey) {
@@ -265,6 +280,7 @@ export const updateTicketStatus = async (ticketId: string, newStatus: TicketStat
             await Promise.allSettled(deletionPromises);
           }
           updateData.solution = null; // Clear the solution from Firestore
+          console.log(`[UpdateStatus] Solution field cleared for ticket ${ticketId}.`);
         }
       }
     } catch (error) {
@@ -273,7 +289,9 @@ export const updateTicketStatus = async (ticketId: string, newStatus: TicketStat
   }
   
   await updateDoc(ticketRef, updateData);
+  console.log(`[UpdateStatus] Ticket ${ticketId} status updated to ${newStatus}. Solution field was ${updateData.solution === null ? 'cleared' : 'not cleared'}.`);
 };
+
 
 export const resolveTicket = async (
   ticketId: string,
@@ -297,7 +315,7 @@ export const resolveTicket = async (
 };
 
 
-export const assignTicket = async (ticketId: string, workerId: string, workerName: string): Promise<void> => {
+export const assignTicket = async (ticketId: string, workerId: string, workerName: string, assignerProfile: UserProfile): Promise<void> => {
   const ticketRef = doc(db, 'tickets', ticketId);
   await updateDoc(ticketRef, {
     assignedTo: workerId,
@@ -307,30 +325,35 @@ export const assignTicket = async (ticketId: string, workerId: string, workerNam
   });
 };
 
-export const addMessageToTicket = async (ticketId: string, messageData: Omit<TicketMessage, 'id' | 'timestamp' | 'senderDisplayName'>, senderProfile: UserProfile): Promise<void> => {
+export const addMessageToTicket = async (
+  ticketId: string,
+  messageData: Omit<TicketMessage, 'id' | 'timestamp' | 'senderDisplayName'>,
+  senderProfile: UserProfile
+): Promise<void> => {
   const ticketRef = doc(db, 'tickets', ticketId);
   const newMessage: TicketMessage = {
     ...messageData,
-    id: doc(collection(db, 'tmp')).id, // Generate a unique ID for the message
+    id: doc(collection(db, 'tmp')).id, 
     senderDisplayName: senderProfile.displayName || senderProfile.email || 'Unknown User',
-    timestamp: Timestamp.now(), // Use client-side timestamp for messages
+    timestamp: Timestamp.now(), 
   };
 
-  // When a new message is added, just add the message and update the timestamp.
-  // Do NOT automatically change status or clear solutions.
-  // The logic for re-opening a ticket and clearing its solution is now handled
-  // exclusively in `updateTicketStatus` when a worker/admin manually changes
-  // a "Resolved" ticket to "Open" or "In Progress".
   const updatePayload: any = {
     messages: arrayUnion(newMessage),
     updatedAt: serverTimestamp(),
   };
 
+  // No automatic status change or solution clearing when a message is added.
+  // This is now handled manually by worker/admin via updateTicketStatus.
+
   await updateDoc(ticketRef, updatePayload);
+  console.log(`[AddMessage] Message added to ticket ${ticketId}. Status not automatically changed.`);
 };
+
 
 export const deleteTicket = async (ticketId: string): Promise<void> => {
   const ticketRef = doc(db, 'tickets', ticketId);
   await deleteDoc(ticketRef);
 };
 
+    

@@ -110,6 +110,7 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
         senderRole: currentUserProfile.role,
         message: values.message,
       };
+      // The addMessageToTicket function now handles status changes if replying to resolved/closed tickets
       await addMessageToTicket(ticket.id, messageData, currentUserProfile);
       messageForm.reset();
       toast({ title: "Message Sent", description: "Your reply has been added to the ticket." });
@@ -158,53 +159,102 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
   };
 
   const handleStatusChange = async (newStatus: TicketStatus) => {
-    if (newStatus === 'Resolved' && (currentUserProfile.role === 'worker' || currentUserProfile.role === 'admin') && currentUserProfile.uid !== ticket.createdBy) {
-      setShowResolveDialog(true);
+    const canManageTicketLocal = currentUserProfile.role === 'admin' || (currentUserProfile.role === 'worker' && ticket.assignedTo === currentUserProfile.uid);
+
+    if (newStatus === 'Resolved' && canManageTicketLocal && currentUserProfile.uid !== ticket.createdBy) {
+      setShowResolveDialog(true); // Open dialog, resolution handled by dialog's submit
       return; 
     }
 
     setIsUpdatingStatus(true);
     try {
-      await updateTicketStatus(ticket.id, newStatus);
+      await updateTicketStatus(ticket.id, newStatus, currentUserProfile); // Pass currentUserProfile for context
       toast({ title: "Status Updated", description: `Ticket status changed to ${newStatus}.` });
 
+      // Email Notification Logic
       let emailSubject = '';
       let emailHtmlContent = '';
       const ticketCreatorName = ticket.createdByName || 'User';
       const shortTicketId = ticket.id.substring(0,8);
 
-      console.log(`[EmailDebug] Attempting status change email. Current User: ${currentUserProfile.displayName} (${currentUserProfile.uid}), Ticket Creator: ${ticket.createdByName} (${ticket.createdBy}), New Status: ${newStatus}`);
+      console.log(`[EmailDebug] Attempting email notification for status change. New status: ${newStatus}. Current user: ${currentUserProfile.uid}, Creator: ${ticket.createdBy}`);
 
       if (newStatus === 'Closed') {
-        emailSubject = `Your FireDesk Ticket '${ticket.title}' (#${shortTicketId}) Has Been Closed`;
-        emailHtmlContent = `<p>Dear ${ticketCreatorName},</p><p>Your ticket <strong>${ticket.title}</strong> (#${shortTicketId}) has been <strong>Closed</strong> by ${currentUserProfile.displayName || 'Support'}.</p><p>We hope your issue was resolved to your satisfaction. If you have any further questions, please feel free to submit a new ticket.</p>${getStandardFooter()}`;
-      } else if (newStatus === 'Resolved') {
-        emailSubject = `FireDesk Ticket Status Updated: ${ticket.title} (#${shortTicketId}) is Now Resolved`;
-        emailHtmlContent = `<p>Dear ${ticketCreatorName},</p><p>The status of your ticket <strong>${ticket.title}</strong> (#${shortTicketId}) has been updated to <strong>Resolved</strong> by ${currentUserProfile.displayName || 'Support'}.</p><p>Please review the solution provided. If the issue persists, you can reply to the ticket.</p>${getStandardFooter()}`;
-      } else { 
-        emailSubject = `FireDesk Ticket Status Updated: ${ticket.title} (#${shortTicketId}) to ${newStatus}`;
-        emailHtmlContent = `<p>Dear ${ticketCreatorName},</p><p>The status of your ticket <strong>${ticket.title}</strong> (#${shortTicketId}) has been updated to <strong>${newStatus}</strong> by ${currentUserProfile.displayName || 'Support'}.</p>${getStandardFooter()}`;
-      }
-      
-      if (ticket.createdBy !== currentUserProfile.uid && (newStatus === 'Closed' || (newStatus === 'Resolved' && !showResolveDialog) )) {
-        const creatorProfile = await getUserProfile(ticket.createdBy);
-        if (creatorProfile?.email) {
-           console.log(`[EmailDebug] Creator profile found for status change email: ${creatorProfile.email}. Sending status change email.`);
-          const emailResult = await sendEmailViaBrevo({
-            to: [{ email: creatorProfile.email, name: creatorProfile.displayName || ticket.createdByName || 'User' }],
-            subject: emailSubject,
-            htmlContent: emailHtmlContent,
-          });
-          if(!emailResult.success){
-            console.warn("[EmailDebug] Brevo reported an issue sending 'status change' email:", emailResult.message, emailResult.error);
+        // Email for 'Closed'
+        if (ticket.createdBy !== currentUserProfile.uid) {
+          const creatorProfile = await getUserProfile(ticket.createdBy);
+          if (creatorProfile?.email) {
+            console.log(`[EmailDebug] Creator profile found: ${creatorProfile.email}. Sending 'Closed' notification.`);
+            emailSubject = `Your FireDesk Ticket '${ticket.title}' (#${shortTicketId}) Has Been Closed`;
+            emailHtmlContent = `<p>Dear ${ticketCreatorName},</p><p>Your ticket <strong>${ticket.title}</strong> (#${shortTicketId}) has been <strong>Closed</strong> by ${currentUserProfile.displayName || 'Support'}.</p><p>We hope your issue was resolved to your satisfaction. If you have any further questions, please feel free to submit a new ticket.</p>${getStandardFooter()}`;
+            
+            const emailResult = await sendEmailViaBrevo({
+              to: [{ email: creatorProfile.email, name: creatorProfile.displayName || ticket.createdByName || 'User' }],
+              subject: emailSubject,
+              htmlContent: emailHtmlContent,
+            });
+            if (!emailResult.success) {
+              console.warn("[EmailDebug] Brevo reported an issue sending 'ticket closed' email:", emailResult.message, emailResult.error);
+            } else {
+              console.log(`[EmailDebug] 'Ticket closed' email notification attempt successful for creator: ${creatorProfile.email}`);
+            }
           } else {
-            console.log(`[EmailDebug] 'Status change to ${newStatus}' email notification attempt successful for creator: ${creatorProfile.email}`);
+            console.log("[EmailDebug] Creator profile or email not found for 'Closed' notification. Skipping.");
           }
         } else {
-           console.log("[EmailDebug] Creator profile or email not found. Skipping status change email.");
+          console.log("[EmailDebug] Self-notification skipped for status change to 'Closed'.");
+        }
+      } else if (newStatus === 'Open' || newStatus === 'In Progress') {
+        // Email for 'Open' or 'In Progress' status change by an agent
+        if (ticket.createdBy !== currentUserProfile.uid) {
+          const creatorProfile = await getUserProfile(ticket.createdBy);
+          if (creatorProfile?.email) {
+            console.log(`[EmailDebug] Creator profile found: ${creatorProfile.email}. Sending '${newStatus}' notification.`);
+            emailSubject = `FireDesk Ticket Status Updated: ${ticket.title} (#${shortTicketId}) to ${newStatus}`;
+            emailHtmlContent = `<p>Dear ${ticketCreatorName},</p><p>The status of your ticket <strong>${ticket.title}</strong> (#${shortTicketId}) has been updated to <strong>${newStatus}</strong> by ${currentUserProfile.displayName || 'Support'}.</p>${getStandardFooter()}`;
+            
+            const emailResult = await sendEmailViaBrevo({
+              to: [{ email: creatorProfile.email, name: creatorProfile.displayName || ticket.createdByName || 'User' }],
+              subject: emailSubject,
+              htmlContent: emailHtmlContent,
+            });
+             if (!emailResult.success) {
+              console.warn(`[EmailDebug] Brevo reported an issue sending '${newStatus}' email:`, emailResult.message, emailResult.error);
+            } else {
+              console.log(`[EmailDebug] '${newStatus}' email notification attempt successful for creator: ${creatorProfile.email}`);
+            }
+          } else {
+            console.log(`[EmailDebug] Creator profile or email not found for '${newStatus}' notification. Skipping.`);
+          }
+        } else {
+          console.log(`[EmailDebug] Self-notification skipped for status change to '${newStatus}'.`);
+        }
+      } else if (newStatus === 'Resolved') {
+        // This case is for when the user themselves changes status to resolved (e.g. if they were an admin/worker who created ticket for themselves)
+        // Normal resolution by agent is handled via handleTicketResolved and ResolveTicketDialog
+        console.log(`[EmailDebug] Status changed directly to 'Resolved' by user ${currentUserProfile.uid}. Email notification for resolution is typically handled by the ResolveTicketDialog flow.`);
+        if (ticket.createdBy !== currentUserProfile.uid) {
+          // If someone other than the creator somehow directly sets to resolved without dialog
+          // This is less common but let's send a generic resolved email
+           const creatorProfile = await getUserProfile(ticket.createdBy);
+           if (creatorProfile?.email) {
+              console.log(`[EmailDebug] Creator profile found: ${creatorProfile.email}. Sending generic 'Resolved' notification as status was changed directly.`);
+              emailSubject = `FireDesk Ticket Status Updated: ${ticket.title} (#${shortTicketId}) is Now Resolved`;
+              emailHtmlContent = `<p>Dear ${ticketCreatorName},</p><p>The status of your ticket <strong>${ticket.title}</strong> (#${shortTicketId}) has been updated to <strong>Resolved</strong> by ${currentUserProfile.displayName || 'Support'}.</p><p>Please review the solution provided. If the issue persists, you can reply to the ticket.</p>${getStandardFooter()}`;
+              const emailResult = await sendEmailViaBrevo({
+                to: [{ email: creatorProfile.email, name: creatorProfile.displayName || ticket.createdByName || 'User' }],
+                subject: emailSubject,
+                htmlContent: emailHtmlContent,
+              });
+              if (!emailResult.success) {
+                console.warn("[EmailDebug] Brevo reported an issue sending generic 'ticket resolved' email:", emailResult.message, emailResult.error);
+              } else {
+                console.log(`[EmailDebug] Generic 'ticket resolved' email notification attempt successful for creator: ${creatorProfile.email}`);
+              }
+           }
         }
       } else {
-        console.log("[EmailDebug] Email condition not met for direct status change notification (or user is self-notifying). Skipping email.");
+        console.log(`[EmailDebug] No specific email handler for status change to '${newStatus}'. Conditions not met for creator notification.`);
       }
     } catch (error) {
       console.error("Error updating status:", error);
@@ -214,7 +264,10 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
     }
   };
 
+
   const handleTicketResolved = async (solutionText: string, solutionAttachments: Attachment[]) => {
+    // This function is called by ResolveTicketDialog upon successful submission
+    // The status is already set to 'Resolved' in firestore by resolveTicket function
     const ticketCreatorName = ticket.createdByName || 'User';
     const shortTicketId = ticket.id.substring(0,8);
     const resolverName = currentUserProfile.displayName || currentUserProfile.email || 'Support Agent';
@@ -252,7 +305,7 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
         });
         if (!emailResult.success) {
           console.warn(`[EmailDebug] Brevo reported an issue sending 'ticket resolved' email for ticket ${ticket.id} to creator ${creatorProfile.email}: ${emailResult.message}`, emailResult.error);
-          toast({ title: "Notification Error", description: "Failed to send resolution email to user.", variant: "destructive" });
+          // toast({ title: "Notification Error", description: "Failed to send resolution email to user.", variant: "destructive" }); // Toast is already shown by dialog
         } else {
            console.log(`[EmailDebug] 'Ticket resolved' email notification attempt successful for creator: ${creatorProfile.email}`);
         }
@@ -267,31 +320,43 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
 
   const handleAssignTicket = async (workerId: string, workerName: string) => {
     try {
-      await assignTicket(ticket.id, workerId, workerName);
+      await assignTicket(ticket.id, workerId, workerName, currentUserProfile);
       toast({ title: "Ticket Assigned", description: `Ticket assigned to ${workerName}.` });
       const shortTicketId = ticket.id.substring(0,8);
 
+      // Notify the assigned worker
       const workerProfile = await getUserProfile(workerId);
       if (workerProfile?.email) {
         console.log(`[EmailDebug] Worker profile found for assignment email: ${workerProfile.email}. Sending email.`);
-        await sendEmailViaBrevo({
+        const emailResultWorker = await sendEmailViaBrevo({
           to: [{ email: workerProfile.email, name: workerProfile.displayName || workerName }],
           subject: `New Ticket Assignment: ${ticket.title} (#${shortTicketId})`,
           htmlContent: `<p>Hello ${workerProfile.displayName || workerName},</p><p>You have been assigned a new ticket: <strong>${ticket.title}</strong> (#${shortTicketId}).</p><p>Please review the ticket details and take appropriate action.</p>${getStandardFooter()}`,
         });
+         if (!emailResultWorker.success) {
+            console.warn(`[EmailDebug] Brevo reported an issue sending assignment email to worker ${workerProfile.email}:`, emailResultWorker.message, emailResultWorker.error);
+        } else {
+            console.log(`[EmailDebug] Assignment email notification attempt successful for worker: ${workerProfile.email}`);
+        }
       } else {
          console.log(`[EmailDebug] Worker profile or email not found for ${workerId}. Skipping assignment email to worker.`);
       }
 
+      // Notify the ticket creator, if they are not the assigner and not the assignee
        if (ticket.createdBy !== currentUserProfile.uid && ticket.createdBy !== workerId) {
         const creatorProfile = await getUserProfile(ticket.createdBy);
         if (creatorProfile?.email) {
           console.log(`[EmailDebug] Creator profile found for assignment notification: ${creatorProfile.email}. Sending email.`);
-          await sendEmailViaBrevo({
+          const emailResultCreator = await sendEmailViaBrevo({
             to: [{ email: creatorProfile.email, name: creatorProfile.displayName || ticket.createdByName || 'User' }],
             subject: `FireDesk Ticket Assigned: ${ticket.title} (#${shortTicketId}) to ${workerName}`,
             htmlContent: `<p>Dear ${creatorProfile.displayName || ticket.createdByName || 'User'},</p><p>Your ticket <strong>${ticket.title}</strong> (#${shortTicketId}) has been assigned to <strong>${workerName}</strong>.</p><p>They will be looking into your issue shortly.</p>${getStandardFooter()}`,
           });
+          if (!emailResultCreator.success) {
+            console.warn(`[EmailDebug] Brevo reported an issue sending assignment notification to creator ${creatorProfile.email}:`, emailResultCreator.message, emailResultCreator.error);
+          } else {
+             console.log(`[EmailDebug] Assignment notification to creator attempt successful for: ${creatorProfile.email}`);
+          }
         } else {
           console.log(`[EmailDebug] Creator profile or email not found for ticket creator ${ticket.createdBy}. Skipping assignment notification to creator.`);
         }
@@ -308,6 +373,7 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
   const handleDeleteTicket = async () => {
     setIsDeletingTicket(true);
     try {
+      // Delete ticket attachments from R2
       if (ticket.attachments && ticket.attachments.length > 0) {
         console.log(`[TicketDelete] Deleting ${ticket.attachments.length} R2 attachments for ticket ${ticket.id}`);
         const deletionPromises = ticket.attachments.map(async (att) => {
@@ -347,6 +413,7 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
         await Promise.allSettled(deletionPromises);
       }
 
+      // Delete solution attachments from R2
       if (ticket.solution?.attachments && ticket.solution.attachments.length > 0) {
         console.log(`[TicketDelete] Deleting ${ticket.solution.attachments.length} R2 solution attachments for ticket ${ticket.id}`);
         const solutionDeletionPromises = ticket.solution.attachments.map(async (att) => {
@@ -379,7 +446,8 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
     } catch (error) {
       console.error("Error during the overall ticket deletion process:", error);
       toast({ title: "Ticket Deletion Error", description: "Failed to delete the ticket from Firestore. Please try again or check server logs.", variant: "destructive" });
-      setIsDeletingTicket(false);
+    } finally {
+        setIsDeletingTicket(false);
     }
   };
 
@@ -506,7 +574,7 @@ export default function TicketDetailView({ ticket, currentUserProfile }: TicketD
           {title} ({attachments.length})
         </h3>
         {attachmentLoadErrorOccurred && (
-          <Alert variant="destructive" className="mb-3">
+           <Alert variant="destructive" className="mb-3">
             <AlertTriangle className="h-4 w-4" />
             <AlertTitle>Attachment Loading Error</AlertTitle>
             <AlertDescription>
