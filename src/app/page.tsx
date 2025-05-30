@@ -5,21 +5,21 @@ import { useEffect } from 'react';
 import { useRouter as useNextRouter } from 'next/navigation'; 
 import { useAuth } from '@/components/auth/AuthProvider';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
-import { useCurrentLocale } from '@/lib/i18n/client';
+import { defaultLocale } from '@/lib/i18n/settings';
 
 export default function HomePage() {
-  const { user, loading } = useAuth();
-  const router = useNextRouter(); // Using Next.js router for base path redirects
-  const currentLocale = useCurrentLocale();
+  const { user, loading, currentLocale } = useAuth(); // Get currentLocale from AuthProvider
+  const router = useNextRouter(); 
 
   useEffect(() => {
     if (!loading) {
+      let targetPath;
       if (user) {
-        // The middleware should handle locale prefixing if necessary
-        router.replace('/dashboard');
+        targetPath = currentLocale === defaultLocale ? '/dashboard' : `/${currentLocale}/dashboard`;
+        router.replace(targetPath);
       } else {
-        // The middleware should handle locale prefixing if necessary
-        router.replace('/login');
+        targetPath = currentLocale === defaultLocale ? '/login' : `/${currentLocale}/login`;
+        router.replace(targetPath);
       }
     }
   }, [user, loading, router, currentLocale]);

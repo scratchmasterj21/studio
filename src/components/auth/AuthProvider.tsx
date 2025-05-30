@@ -12,7 +12,7 @@ import { auth, db, googleProvider } from '@/lib/firebase';
 import type { UserProfile} from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
-import { defaultLocale, locales, type Locale } from '@/lib/i18n/settings'; // Import locale settings
+import { defaultLocale, type Locale } from '@/lib/i18n/settings';
 
 interface AuthProviderProps {
   children: ReactNode;
@@ -25,7 +25,7 @@ interface AuthContextType {
   loading: boolean;
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
-  currentLocale: Locale; // Expose currentLocale
+  currentLocale: Locale;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -36,7 +36,7 @@ export const AuthProvider = ({ children, locale }: AuthProviderProps) => {
   const [loading, setLoading] = useState(true);
   const [isSigningIn, setIsSigningIn] = useState(false);
   const router = useNextRouter();
-  const pathname = usePathname(); // next/navigation for raw path
+  const pathname = usePathname();
   
   const currentLocale = locale; // Use the locale passed as a prop
   console.log('[AuthProvider] Initial locale from prop:', currentLocale);
@@ -77,17 +77,20 @@ export const AuthProvider = ({ children, locale }: AuthProviderProps) => {
             }
           }
           
-          // Determine if current path is a login/root path
           let isOnLoginOrRootPath = false;
+          const nonPrefixedLoginPath = '/login';
+          const nonPrefixedRootPath = '/';
+          const localePrefixedLoginPath = `/${currentLocale}/login`;
+          const localePrefixedRootPath1 = `/${currentLocale}`;
+          const localePrefixedRootPath2 = `/${currentLocale}/`;
+
           if (currentLocale === defaultLocale) {
-            // For default locale, paths are /login or /
-            isOnLoginOrRootPath = (pathname === '/login' || pathname === '/');
+            isOnLoginOrRootPath = (pathname === nonPrefixedLoginPath || pathname === nonPrefixedRootPath);
           } else {
-            // For other locales, paths are /<locale>/login or /<locale> or /<locale>/
             isOnLoginOrRootPath = (
-              pathname === `/${currentLocale}/login` || 
-              pathname === `/${currentLocale}` || 
-              pathname === `/${currentLocale}/`
+              pathname === localePrefixedLoginPath || 
+              pathname === localePrefixedRootPath1 || 
+              pathname === localePrefixedRootPath2
             );
           }
 
@@ -96,19 +99,24 @@ export const AuthProvider = ({ children, locale }: AuthProviderProps) => {
              console.log(`[AuthProvider] User logged in, on login/root. Redirecting to: ${dashboardPath}`);
              router.replace(dashboardPath);
           }
-        } else { // No firebaseUser
+        } else { 
           setUser(null);
           setUserProfile(null);
           
-          // Determine if current path is public (login/root)
           let isOnPublicPath = false;
+          const nonPrefixedLoginPath = '/login';
+          const nonPrefixedRootPath = '/';
+          const localePrefixedLoginPath = `/${currentLocale}/login`;
+          const localePrefixedRootPath1 = `/${currentLocale}`;
+          const localePrefixedRootPath2 = `/${currentLocale}/`;
+
           if (currentLocale === defaultLocale) {
-            isOnPublicPath = (pathname === '/login' || pathname === '/');
+            isOnPublicPath = (pathname === nonPrefixedLoginPath || pathname === nonPrefixedRootPath);
           } else {
             isOnPublicPath = (
-              pathname === `/${currentLocale}/login` || 
-              pathname === `/${currentLocale}` || 
-              pathname === `/${currentLocale}/`
+              pathname === localePrefixedLoginPath || 
+              pathname === localePrefixedRootPath1 || 
+              pathname === localePrefixedRootPath2
             );
           }
           
@@ -122,7 +130,7 @@ export const AuthProvider = ({ children, locale }: AuthProviderProps) => {
         }
       } catch (error) {
         console.error('[AuthProvider] Auth state change error:', error);
-        setUser(null); // Ensure user state is cleared on error
+        setUser(null); 
         setUserProfile(null);
       } finally {
         setLoading(false);
@@ -130,7 +138,7 @@ export const AuthProvider = ({ children, locale }: AuthProviderProps) => {
     });
 
     return () => unsubscribe();
-  }, [router, toast, pathname, currentLocale]); // currentLocale is now correctly from props
+  }, [router, toast, pathname, currentLocale]);
 
   const signInWithGoogle = async () => {
     if (isSigningIn) {
@@ -149,7 +157,7 @@ export const AuthProvider = ({ children, locale }: AuthProviderProps) => {
         description: 'Successfully signed in with Google.',
         variant: 'default',
       });
-      
+      // Redirect is handled by useEffect
     } catch (error) {
       console.error('[AuthProvider] Error signing in with Google:', error);
       const firebaseError = error as FirebaseError;
@@ -218,12 +226,21 @@ export const AuthProvider = ({ children, locale }: AuthProviderProps) => {
   };
   
   let isOnPublicPathCheck = false;
-  if (currentLocale === defaultLocale) {
-    isOnPublicPathCheck = pathname === '/login' || pathname === '/';
-  } else {
-    isOnPublicPathCheck = pathname === `/${currentLocale}/login` || pathname === `/${currentLocale}` || pathname === `/${currentLocale}/`;
-  }
+  const nonPrefixedLoginPathCheck = '/login';
+  const nonPrefixedRootPathCheck = '/';
+  const localePrefixedLoginPathCheck = `/${currentLocale}/login`;
+  const localePrefixedRootPathCheck1 = `/${currentLocale}`;
+  const localePrefixedRootPathCheck2 = `/${currentLocale}/`;
 
+  if (currentLocale === defaultLocale) {
+    isOnPublicPathCheck = (pathname === nonPrefixedLoginPathCheck || pathname === nonPrefixedRootPathCheck);
+  } else {
+    isOnPublicPathCheck = (
+      pathname === localePrefixedLoginPathCheck || 
+      pathname === localePrefixedRootPathCheck1 || 
+      pathname === localePrefixedRootPathCheck2
+    );
+  }
 
   if (loading && !isOnPublicPathCheck) {
     return (
@@ -241,7 +258,7 @@ export const AuthProvider = ({ children, locale }: AuthProviderProps) => {
         loading: loading || isSigningIn, 
         signInWithGoogle, 
         signOut,
-        currentLocale // Expose the prop-derived locale
+        currentLocale
       }}
     >
       {children}
