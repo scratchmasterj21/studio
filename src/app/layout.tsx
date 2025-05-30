@@ -47,7 +47,7 @@ export const viewport: Viewport = {
 
 interface RootLayoutProps {
   children: React.ReactNode;
-  params: { locale: string }; // The locale will be injected by the middleware/routing
+  params: { locale?: string }; // The locale will be injected by the middleware/routing
 }
 
 export default async function RootLayout({
@@ -58,16 +58,21 @@ export default async function RootLayout({
   let effectiveLocale: Locale = defaultLocale;
   const paramsLocale = params.locale as Locale | undefined;
 
-  if (paramsLocale && locales.includes(paramsLocale) && paramsLocale !== 'undefined') {
+  if (paramsLocale && paramsLocale !== 'undefined' && locales.includes(paramsLocale)) {
     effectiveLocale = paramsLocale;
   } else {
     try {
-      const serverLocale = await getCurrentLocale();
+      // getCurrentLocale from next-international/server should give the resolved locale
+      const serverLocale = await getCurrentLocale(); 
       if (locales.includes(serverLocale) && serverLocale !== 'undefined') {
         effectiveLocale = serverLocale;
+      } else {
+        console.warn(`[RootLayout] Server locale "${serverLocale}" is not a valid configured locale or is 'undefined'. Defaulting to: ${defaultLocale}`);
+        effectiveLocale = defaultLocale;
       }
     } catch (error) {
       console.warn('[RootLayout] Could not determine locale from server, defaulting to:', defaultLocale, error);
+      effectiveLocale = defaultLocale;
     }
   }
   
