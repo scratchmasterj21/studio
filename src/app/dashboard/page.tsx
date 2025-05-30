@@ -8,7 +8,7 @@ import LoadingSpinner from '@/components/common/LoadingSpinner';
 import type { Ticket, TicketStatus, TicketPriority } from '@/lib/types';
 import { onTicketsUpdate } from '@/lib/firestore';
 import { Button } from '@/components/ui/button';
-import Link from 'next/link'; // Changed back to next/link
+import Link from 'next/link';
 import { PlusCircle, Filter, Search, Briefcase, Clock, FileText, ArrowDownUp, CheckCircle2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import {
@@ -20,26 +20,15 @@ import {
 } from "@/components/ui/select";
 import { ticketPriorities, ticketStatuses } from '@/config/site';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { useTranslations } from '@/hooks/useTranslations'; // Import useTranslations
 
 type WorkerSortOption = "updatedAt_desc" | "priority_desc" | "priority_asc" | "createdAt_desc";
-
-const workerSortOptions: { value: WorkerSortOption; label: string }[] = [
-  { value: "updatedAt_desc", label: "Last Updated (Newest First)" },
-  { value: "priority_desc", label: "Priority (High to Low)" },
-  { value: "priority_asc", label: "Priority (Low to High)" },
-  { value: "createdAt_desc", label: "Creation Date (Newest First)" },
-];
-
-const priorityMap: { [key in TicketPriority]: number } = {
-  "Low": 0,
-  "Medium": 1,
-  "High": 2,
-};
 
 export default function DashboardPage() {
   const { userProfile, loading: authLoading } = useAuth();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [isLoadingTickets, setIsLoadingTickets] = useState(true);
+  const { t, isLoadingTranslations } = useTranslations('dashboardPage'); // Use translations
 
   // Admin filters
   const [statusFilter, setStatusFilter] = useState<TicketStatus | "all">("all");
@@ -48,6 +37,14 @@ export default function DashboardPage() {
 
   // Worker filters/sort
   const [workerSortOption, setWorkerSortOption] = useState<WorkerSortOption>("updatedAt_desc");
+
+  const workerSortOptions: { value: WorkerSortOption; label: string }[] = useMemo(() => [
+    { value: "updatedAt_desc", label: t('workerStats.sortBy.lastUpdated') || "Last Updated (Newest First)" },
+    { value: "priority_desc", label: t('workerStats.sortBy.priorityHighToLow') || "Priority (High to Low)" },
+    { value: "priority_asc", label: t('workerStats.sortBy.priorityLowToHigh') || "Priority (Low to High)" },
+    { value: "createdAt_desc", label: t('workerStats.sortBy.creationDate') || "Creation Date (Newest First)" },
+  ], [t]);
+
 
   useEffect(() => {
     if (userProfile) {
@@ -60,10 +57,16 @@ export default function DashboardPage() {
       const unsubscribe = onTicketsUpdate(userProfile, (fetchedTickets) => {
         setTickets(fetchedTickets);
         setIsLoadingTickets(false);
-      }, adminFilters); // Pass admin specific filters if admin
+      }, adminFilters);
       return () => unsubscribe();
     }
-  }, [userProfile, statusFilter, priorityFilter]); // Admin filters trigger Firestore re-fetch
+  }, [userProfile, statusFilter, priorityFilter]);
+
+  const priorityMap: { [key in TicketPriority]: number } = {
+    "Low": 0,
+    "Medium": 1,
+    "High": 2,
+  };
 
   const processedTickets = useMemo(() => {
     let displayTickets = [...tickets];
@@ -84,7 +87,7 @@ export default function DashboardPage() {
             return priorityMap[a.priority] - priorityMap[b.priority];
           case "createdAt_desc":
             return (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0);
-          case "updatedAt_desc": // Firestore default for worker is already this
+          case "updatedAt_desc":
           default:
             return (b.updatedAt?.toMillis() || 0) - (a.updatedAt?.toMillis() || 0);
         }
@@ -115,7 +118,7 @@ export default function DashboardPage() {
   }, [tickets, userProfile?.role]);
 
 
-  if (authLoading || !userProfile) {
+  if (authLoading || !userProfile || isLoadingTranslations) {
     return (
       <div className="flex justify-center items-center h-[calc(100vh-10rem)]">
         <LoadingSpinner size="lg" />
@@ -124,12 +127,12 @@ export default function DashboardPage() {
   }
   
   const getPageTitle = () => {
-    if (!userProfile) return 'Tickets';
+    if (!userProfile) return t('defaultTitle');
     switch (userProfile.role) {
-      case 'admin': return 'All Tickets Management';
-      case 'worker': return 'My Assigned Tickets';
-      case 'user': return 'My Submitted Tickets';
-      default: return 'Tickets';
+      case 'admin': return t('adminTitle');
+      case 'worker': return t('workerTitle');
+      case 'user': return t('userTitle');
+      default: return t('defaultTitle');
     }
   };
 
@@ -141,7 +144,7 @@ export default function DashboardPage() {
           <Button asChild>
             <Link href="/dashboard/tickets/new">
               <PlusCircle className="mr-2 h-5 w-5" />
-              Create New Ticket
+              {t('createNewTicketButton')}
             </Link>
           </Button>
         )}
@@ -151,22 +154,22 @@ export default function DashboardPage() {
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Open Tickets</CardTitle>
+              <CardTitle className="text-sm font-medium">{t('workerStats.openTickets')}</CardTitle>
               <FileText className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{workerStats.open}</div>
-              <p className="text-xs text-muted-foreground">Currently assigned to you</p>
+              <p className="text-xs text-muted-foreground">{t('workerStats.openTicketsDesc')}</p>
             </CardContent>
           </Card>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">In Progress Tickets</CardTitle>
+              <CardTitle className="text-sm font-medium">{t('workerStats.inProgressTickets')}</CardTitle>
               <Briefcase className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{workerStats.inProgress}</div>
-               <p className="text-xs text-muted-foreground">Currently being worked on</p>
+               <p className="text-xs text-muted-foreground">{t('workerStats.inProgressTicketsDesc')}</p>
             </CardContent>
           </Card>
         </div>
@@ -176,50 +179,49 @@ export default function DashboardPage() {
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Your Open Tickets</CardTitle>
+              <CardTitle className="text-sm font-medium">{t('userStats.yourOpenTickets')}</CardTitle>
               <FileText className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{userTicketStats.open}</div>
-              <p className="text-xs text-muted-foreground">Awaiting agent response</p>
+              <p className="text-xs text-muted-foreground">{t('userStats.yourOpenTicketsDesc')}</p>
             </CardContent>
           </Card>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Your In-Progress Tickets</CardTitle>
+              <CardTitle className="text-sm font-medium">{t('userStats.yourInProgressTickets')}</CardTitle>
               <Briefcase className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{userTicketStats.inProgress}</div>
-               <p className="text-xs text-muted-foreground">Being actively worked on</p>
+               <p className="text-xs text-muted-foreground">{t('userStats.yourInProgressTicketsDesc')}</p>
             </CardContent>
           </Card>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Your Resolved Tickets</CardTitle>
+              <CardTitle className="text-sm font-medium">{t('userStats.yourResolvedTickets')}</CardTitle>
               <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{userTicketStats.resolved}</div>
-               <p className="text-xs text-muted-foreground">Awaiting your confirmation</p>
+               <p className="text-xs text-muted-foreground">{t('userStats.yourResolvedTicketsDesc')}</p>
             </CardContent>
           </Card>
         </div>
       )}
 
-
       {userProfile.role === 'admin' && (
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Filter className="h-5 w-5" /> Filters & Search</CardTitle>
-            <CardDescription>Filter tickets by status, priority, or search by title/description.</CardDescription>
+            <CardTitle className="flex items-center gap-2"><Filter className="h-5 w-5" /> {t('filtersSearchTitle')}</CardTitle>
+            <CardDescription>{t('filtersSearchDescription')}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
               <Input
                 type="search"
-                placeholder="Search by title or description..."
+                placeholder={t('searchPlaceholder')}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10 w-full"
@@ -227,13 +229,13 @@ export default function DashboardPage() {
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label htmlFor="status-filter" className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                <label htmlFor="status-filter" className="block text-sm font-medium text-gray-700 mb-1">{t('statusFilterLabel')}</label>
                 <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as TicketStatus | "all")}>
                   <SelectTrigger id="status-filter">
-                    <SelectValue placeholder="Filter by Status" />
+                    <SelectValue placeholder={t('statusFilterPlaceholder')} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Statuses</SelectItem>
+                    <SelectItem value="all">{t('allStatuses')}</SelectItem>
                     {ticketStatuses.map(status => (
                       <SelectItem key={status} value={status}>{status}</SelectItem>
                     ))}
@@ -241,13 +243,13 @@ export default function DashboardPage() {
                 </Select>
               </div>
               <div>
-                <label htmlFor="priority-filter" className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
+                <label htmlFor="priority-filter" className="block text-sm font-medium text-gray-700 mb-1">{t('priorityFilterLabel')}</label>
                 <Select value={priorityFilter} onValueChange={(value) => setPriorityFilter(value as TicketPriority | "all")}>
                   <SelectTrigger id="priority-filter">
-                    <SelectValue placeholder="Filter by Priority" />
+                    <SelectValue placeholder={t('priorityFilterPlaceholder')} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Priorities</SelectItem>
+                    <SelectItem value="all">{t('allPriorities')}</SelectItem>
                     {ticketPriorities.map(priority => (
                       <SelectItem key={priority} value={priority}>{priority}</SelectItem>
                     ))}
@@ -262,17 +264,17 @@ export default function DashboardPage() {
       {userProfile.role === 'worker' && (
          <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><ArrowDownUp className="h-5 w-5" /> Sort Tickets</CardTitle>
+            <CardTitle className="flex items-center gap-2"><ArrowDownUp className="h-5 w-5" /> {t('sortTicketsTitle')}</CardTitle>
           </CardHeader>
           <CardContent>
              <div>
-                <label htmlFor="worker-sort-filter" className="block text-sm font-medium text-gray-700 mb-1">Sort by</label>
+                <label htmlFor="worker-sort-filter" className="block text-sm font-medium text-gray-700 mb-1">{t('sortByLabel')}</label>
                 <Select 
                   value={workerSortOption} 
                   onValueChange={(value) => setWorkerSortOption(value as WorkerSortOption)}
                 >
                   <SelectTrigger id="worker-sort-filter">
-                    <SelectValue placeholder="Sort tickets" />
+                    <SelectValue placeholder={t('sortTicketsPlaceholder')} />
                   </SelectTrigger>
                   <SelectContent>
                     {workerSortOptions.map(option => (

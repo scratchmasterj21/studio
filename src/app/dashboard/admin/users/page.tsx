@@ -24,10 +24,11 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users as UsersIcon, Edit3 } from 'lucide-react';
+import { Users as UsersIcon } from 'lucide-react'; // Removed Edit3 as it's not used
 import { useAuth } from '@/components/auth/AuthProvider';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
+import { useTranslations } from '@/hooks/useTranslations'; // Import useTranslations
 
 const availableRoles: UserRole[] = ['user', 'worker', 'admin'];
 
@@ -35,8 +36,9 @@ export default function ManageUsersPage() {
   const { userProfile: currentAdminProfile } = useAuth();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [isLoadingUsers, setIsLoadingUsers] = useState(true);
-  const [updatingRoleId, setUpdatingRoleId] = useState<string | null>(null); // UID of user whose role is being updated
+  const [updatingRoleId, setUpdatingRoleId] = useState<string | null>(null);
   const { toast } = useToast();
+  const { t, isLoadingTranslations } = useTranslations('adminUsersPage'); // Use translations
 
   useEffect(() => {
     setIsLoadingUsers(true);
@@ -44,14 +46,14 @@ export default function ManageUsersPage() {
       setUsers(fetchedUsers);
       setIsLoadingUsers(false);
     });
-    return () => unsubscribe(); // Cleanup subscription on component unmount
+    return () => unsubscribe();
   }, []);
 
   const handleRoleChange = async (userId: string, newRole: UserRole) => {
     if (userId === currentAdminProfile?.uid) {
       toast({
-        title: "Action Denied",
-        description: "Administrators cannot change their own role.",
+        title: t('toast.actionDenied.title'),
+        description: t('toast.actionDenied.description'),
         variant: "destructive",
       });
       return;
@@ -60,15 +62,14 @@ export default function ManageUsersPage() {
     try {
       await updateUserRole(userId, newRole);
       toast({
-        title: "Role Updated",
-        description: `User's role has been successfully changed to ${newRole}.`,
+        title: t('toast.roleUpdated.title'),
+        description: t('toast.roleUpdated.description', { newRole: newRole }),
       });
-      // The list will auto-update due to the onSnapshot listener in getAllUsers
     } catch (error) {
       console.error("Error updating role:", error);
       toast({
-        title: "Error",
-        description: "Failed to update user role. Please try again.",
+        title: t('toast.error.title'),
+        description: t('toast.error.description'),
         variant: "destructive",
       });
     } finally {
@@ -76,7 +77,7 @@ export default function ManageUsersPage() {
     }
   };
 
-  if (isLoadingUsers || !currentAdminProfile) {
+  if (isLoadingUsers || !currentAdminProfile || isLoadingTranslations) {
     return (
       <div className="flex justify-center items-center py-20">
         <LoadingSpinner size="lg" />
@@ -89,25 +90,25 @@ export default function ManageUsersPage() {
       <CardHeader>
         <div className="flex items-center gap-3">
           <UsersIcon className="h-8 w-8 text-primary" />
-          <CardTitle className="text-3xl font-bold">User Management</CardTitle>
+          <CardTitle className="text-3xl font-bold">{t('title')}</CardTitle>
         </div>
-        <CardDescription className="mt-1">View and manage all user roles in the system.</CardDescription>
+        <CardDescription className="mt-1">{t('description')}</CardDescription>
       </CardHeader>
       <CardContent>
         {users.length === 0 ? (
-          <p className="text-center text-muted-foreground py-10">No users found in the system.</p>
+          <p className="text-center text-muted-foreground py-10">{t('noUsersFound')}</p>
         ) : (
           <div className="overflow-x-auto rounded-md border">
             <Table>
-              <TableCaption className="py-4">A list of all registered users.</TableCaption>
+              <TableCaption className="py-4">{t('tableCaption')}</TableCaption>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[100px] sm:w-[120px]">UID</TableHead>
-                  <TableHead>Display Name</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead className="text-center">Current Role</TableHead>
-                  <TableHead className="w-[180px]">Change Role</TableHead>
-                  <TableHead className="text-right">Created At</TableHead>
+                  <TableHead className="w-[100px] sm:w-[120px]">{t('uidHeader')}</TableHead>
+                  <TableHead>{t('displayNameHeader')}</TableHead>
+                  <TableHead>{t('emailHeader')}</TableHead>
+                  <TableHead className="text-center">{t('currentRoleHeader')}</TableHead>
+                  <TableHead className="w-[180px]">{t('changeRoleHeader')}</TableHead>
+                  <TableHead className="text-right">{t('createdAtHeader')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -135,7 +136,7 @@ export default function ManageUsersPage() {
                     </TableCell>
                     <TableCell>
                       {user.uid === currentAdminProfile.uid ? (
-                        <span className="text-sm text-muted-foreground italic">Cannot change own role</span>
+                        <span className="text-sm text-muted-foreground italic">{t('cannotChangeOwnRole')}</span>
                       ) : (
                         <Select
                           value={user.role}
@@ -143,7 +144,7 @@ export default function ManageUsersPage() {
                           disabled={updatingRoleId === user.uid}
                         >
                           <SelectTrigger className="h-9">
-                            <SelectValue placeholder="Change role" />
+                            <SelectValue placeholder={t('roleSelectPlaceholder')} />
                           </SelectTrigger>
                           <SelectContent>
                             {availableRoles.map(role => (

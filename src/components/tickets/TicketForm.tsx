@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { createTicket, getUserProfile } from "@/lib/firestore";
-import type { TicketCategory, TicketPriority, UserProfile, Attachment, TicketStatus } from "@/lib/types";
+import type { TicketCategory, TicketPriority, UserProfile, Attachment } from "@/lib/types";
 import { ticketCategories, ticketPriorities } from "@/config/site";
 import { useRouter } from 'next/navigation';
 import { useState, useRef } from "react";
@@ -34,7 +34,7 @@ import { sendEmailViaBrevo } from "@/lib/brevo";
 import { Progress } from "@/components/ui/progress";
 import { UploadCloud, FileText, Image as ImageIcon, Video, Trash2, AlertCircle } from "lucide-react";
 import { v4 as uuidv4 } from 'uuid';
-import { cn } from "@/lib/utils";
+import { useTranslations } from "@/hooks/useTranslations"; // Import useTranslations
 
 const MAX_FILES = 5;
 const MAX_FILE_SIZE_MB = 25; 
@@ -62,9 +62,7 @@ interface TicketFormProps {
   userProfile: UserProfile;
 }
 
-// IMPORTANT: Replace these placeholder values in src/lib/firestore.ts with the actual UID and display name of your default support agent.
 const DEFAULT_WORKER_UID = "YNTAZdX8ClcRr3bAgf1WED1dE393"; 
-// const DEFAULT_WORKER_NAME = "John Carlo Limpiada"; // This is defined in firestore.ts
 
 export default function TicketForm({ userProfile }: TicketFormProps) {
   const { toast } = useToast();
@@ -72,6 +70,7 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
   const [isSubmittingMainForm, setIsSubmittingMainForm] = useState(false);
   const [uploadableFiles, setUploadableFiles] = useState<UploadableFile[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { t, isLoadingTranslations } = useTranslations('ticketForm'); // Use translations
 
   const form = useForm<TicketFormValues>({
     resolver: zodResolver(ticketFormSchema),
@@ -112,7 +111,6 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
     }).filter(Boolean) as UploadableFile[];
 
     setUploadableFiles(prev => [...prev, ...newUploadableFiles]);
-    
     newUploadableFiles.forEach(uf => handleFileUpload(uf));
 
     if (fileInputRef.current) {
@@ -131,7 +129,6 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
       prevFiles.map(uf => {
         if (uf.id === fileId) {
           if (uf.status === 'uploading' || uf.status === 'success') {
-            console.log(`[FileUpload] Skipped upload for ${file.name}: Status is ${uf.status}.`);
             return uf;
           }
           return { ...uf, status: 'uploading', progress: 0, error: undefined };
@@ -150,16 +147,9 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
       console.log(`[FileUpload] Presigned URL response status for ${file.name}: ${presignedUrlResponse.status}`);
 
       if (!presignedUrlResponse.ok) {
-        const errorBody = await presignedUrlResponse.text();
-        let parsedError = {};
-        try {
-            parsedError = JSON.parse(errorBody || '{}');
-        } catch (e) {
-            console.warn("[FileUpload] Could not parse error response from presigned URL endpoint as JSON:", errorBody);
-        }
-        console.error(`[FileUpload] Failed to get presigned URL for ${file.name}. Status: ${presignedUrlResponse.status}, Body: ${errorBody}`);
-        // @ts-ignore
-        throw new Error(parsedError.error || `Failed to get presigned URL. Status: ${presignedUrlResponse.status}`);
+        const errorBody = await presignedUrlResponse.json();
+        console.error(`[FileUpload] Failed to get presigned URL for ${file.name}. Status: ${presignedUrlResponse.status}, Body:`, errorBody);
+        throw new Error(errorBody.error || `Failed to get presigned URL. Status: ${presignedUrlResponse.status}`);
       }
       const { presignedUrl, fileKey, publicUrl } = await presignedUrlResponse.json();
       console.log(`[FileUpload] Got presigned URL for ${file.name}: ${presignedUrl}`);
@@ -198,23 +188,21 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
 
     } catch (error: any) {
       console.error(`[FileUpload] Error during upload process for ${file.name}:`, error);
-      
       let detailedErrorMessage = "Failed to upload file. Check your network connection and R2 CORS settings.";
       if (error.message && error.message.toLowerCase().includes('failed to fetch')) {
-        detailedErrorMessage = `Upload failed for ${file.name}. This could be a network issue or a CORS configuration problem with Cloudflare R2. Please check your browser console for details and ensure R2 CORS settings allow PUT requests from this origin.`;
+        detailedErrorMessage = t('uploadFailedFetchError', { fileName: file.name });
       } else if (error.message) {
         detailedErrorMessage = error.message;
       }
 
       setUploadableFiles(prev => prev.map(uf => uf.id === fileId ? { ...uf, status: 'error', error: detailedErrorMessage } : uf));
       toast({
-        title: `Upload Error: ${file.name}`,
+        title: t('uploadErrorTitle', { fileName: file.name }),
         description: detailedErrorMessage,
         variant: "destructive",
       });
     }
   };
-
 
   async function onSubmit(values: TicketFormValues) {
     setIsSubmittingMainForm(true);
@@ -234,97 +222,92 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
       
       const ticketId = await createTicket(ticketDataForCreation, userProfile);
       toast({
-        title: "Ticket Created!",
-        description: `Your ticket "${values.title}" has been submitted.`,
+        title: t('ticketCreatedToast.title'),
+        description: t('ticketCreatedToast.description', { ticketTitle: values.title }),
       });
 
       const ticketLink = `${typeof window !== 'undefined' ? window.location.origin : ''}/dashboard/tickets/${ticketId}`;
       const shortTicketId = ticketId.substring(0,8);
       const standardFooter = `
         <p style="font-size: 0.9em; color: #555555; margin-top: 20px; border-top: 1px solid #eeeeee; padding-top: 10px;">
-          This is an automated notification from FireDesk. Please do not reply directly to this email unless instructed.
-          <br>
-          You can view the ticket <a href="${ticketLink}">here</a>.
+          ${t('email.footer.automatedNotification')}<br>
+          ${t('email.footer.viewTicketHere', { ticketLink: ticketLink })}
         </p>
       `;
 
-      // Notify ticket creator
       if (userProfile.email) {
          await sendEmailViaBrevo({
            to: [{ email: userProfile.email, name: userProfile.displayName || userProfile.email }],
-           subject: `FireDesk Ticket Created: ${values.title} (#${shortTicketId})`,
+           subject: t('email.creator.newTicket.subject', { ticketTitle: values.title, shortTicketId: shortTicketId }),
            htmlContent: `
-             <h1>Ticket Created: ${values.title}</h1>
-             <p>Dear ${userProfile.displayName || 'User'},</p>
-             <p>Your support ticket has been successfully created with ID: <strong>#${shortTicketId}</strong>.</p>
-             <p><strong>Title:</strong> ${values.title}</p>
-             <p><strong>Description:</strong> ${values.description.replace(/\n/g, '<br>')}</p>
-             <p><strong>Category:</strong> ${values.category}</p>
-             <p><strong>Priority:</strong> ${values.priority}</p>
-             <p>It has been automatically assigned and its status is Open.</p>
-             ${successfulUploads.length > 0 ? `<p><strong>Attachments:</strong> ${successfulUploads.map(att => att.name).join(', ')}</p>` : ''}
-             <p>We will get back to you as soon as possible.</p>
+             <h1>${t('email.creator.newTicket.heading', { ticketTitle: values.title })}</h1>
+             <p>${t('email.creator.newTicket.dearUser', { userName: userProfile.displayName || 'User' })}</p>
+             <p>${t('email.creator.newTicket.body', { shortTicketId: shortTicketId })}</p>
+             <p><strong>${t('email.creator.newTicket.titleLabel')}:</strong> ${values.title}</p>
+             <p><strong>${t('email.creator.newTicket.descriptionLabel')}:</strong> ${values.description.replace(/\n/g, '<br>')}</p>
+             <p><strong>${t('email.creator.newTicket.categoryLabel')}:</strong> ${values.category}</p>
+             <p><strong>${t('email.creator.newTicket.priorityLabel')}:</strong> ${values.priority}</p>
+             <p>${t('email.creator.newTicket.statusNote')}</p>
+             ${successfulUploads.length > 0 ? `<p><strong>${t('email.creator.newTicket.attachmentsLabel')}:</strong> ${successfulUploads.map(att => att.name).join(', ')}</p>` : ''}
+             <p>${t('email.creator.newTicket.followUp')}</p>
              ${standardFooter}
            `,
          });
       }
       
-      // Notify Admin
       const adminEmail = process.env.NEXT_PUBLIC_ADMIN_EMAIL_NOTIFICATIONS;
       if (adminEmail) {
         await sendEmailViaBrevo({
           to: [{ email: adminEmail }],
-          subject: `New FireDesk Ticket (Assigned): ${values.title} by ${userProfile.displayName || userProfile.email} (#${shortTicketId})`,
+          subject: t('email.admin.newTicket.subject', { ticketTitle: values.title, creatorName: userProfile.displayName || userProfile.email || "Unknown", shortTicketId: shortTicketId }),
           htmlContent: `
-            <h1>New Ticket Submission - Automatically Assigned</h1>
-            <p>A new support ticket has been created by <strong>${userProfile.displayName || userProfile.email}</strong> (User ID: ${userProfile.uid}).</p>
-            <p><strong>Ticket ID:</strong> #${shortTicketId}</p>
-            <p><strong>Title:</strong> ${values.title}</p>
-            <p><strong>Description:</strong></p>
+            <h1>${t('email.admin.newTicket.heading')}</h1>
+            <p>${t('email.admin.newTicket.body', { creatorName: userProfile.displayName || userProfile.email || "Unknown", userId: userProfile.uid})}</p>
+            <p><strong>${t('email.admin.newTicket.ticketIdLabel')}:</strong> #${shortTicketId}</p>
+            <p><strong>${t('email.admin.newTicket.titleLabel')}:</strong> ${values.title}</p>
+            <p><strong>${t('email.admin.newTicket.descriptionLabel')}:</strong></p>
             <div style="padding: 10px; border-left: 3px solid #eee; margin: 10px 0;">
               <p style="margin:0;">${values.description.replace(/\n/g, '<br>')}</p>
             </div>
-            <p><strong>Category:</strong> ${values.category}</p>
-            <p><strong>Priority:</strong> ${values.priority}</p>
-            <p><strong>This ticket has been automatically assigned to the default agent and its status is Open.</strong></p>
-            ${successfulUploads.length > 0 ? `<p><strong>Attachments:</strong> ${successfulUploads.map(att => `<a href="${att.url}">${att.name}</a>`).join(', ')}</p>` : ''}
+            <p><strong>${t('email.admin.newTicket.categoryLabel')}:</strong> ${values.category}</p>
+            <p><strong>${t('email.admin.newTicket.priorityLabel')}:</strong> ${values.priority}</p>
+            <p><strong>${t('email.admin.newTicket.statusNote')}</strong></p>
+            ${successfulUploads.length > 0 ? `<p><strong>${t('email.admin.newTicket.attachmentsLabel')}:</strong> ${successfulUploads.map(att => `<a href="${att.url}">${att.name}</a>`).join(', ')}</p>` : ''}
             ${standardFooter}
           `,
         });
       }
 
-      // Notify Default Worker if assigned
       if (DEFAULT_WORKER_UID && DEFAULT_WORKER_UID !== "REPLACE_WITH_DEFAULT_WORKER_UID") {
         const workerProfile = await getUserProfile(DEFAULT_WORKER_UID);
-        if (workerProfile?.email && workerProfile.email !== userProfile.email && workerProfile.email !== adminEmail) { // Avoid duplicate emails
+        if (workerProfile?.email && workerProfile.email !== userProfile.email && workerProfile.email !== adminEmail) {
             await sendEmailViaBrevo({
-                to: [{ email: workerProfile.email, name: workerProfile.displayName || "Default Agent" }],
-                subject: `New Ticket Assigned to You: ${values.title} (#${shortTicketId})`,
+                to: [{ email: workerProfile.email, name: workerProfile.displayName || t('email.worker.defaultAgentName') }],
+                subject: t('email.worker.newTicketAssigned.subject', { ticketTitle: values.title, shortTicketId: shortTicketId }),
                 htmlContent: `
-                    <p>Hello ${workerProfile.displayName || "Default Agent"},</p>
-                    <p>A new ticket has been created and automatically assigned to you:</p>
-                    <p><strong>Ticket ID:</strong> #${shortTicketId}</p>
-                    <p><strong>Title:</strong> ${values.title}</p>
-                    <p><strong>Created By:</strong> ${userProfile.displayName || userProfile.email}</p>
-                    <p><strong>Description:</strong></p>
+                    <p>${t('email.worker.newTicketAssigned.greeting', { workerName: workerProfile.displayName || t('email.worker.defaultAgentName') })}</p>
+                    <p>${t('email.worker.newTicketAssigned.body')}</p>
+                    <p><strong>${t('email.worker.newTicketAssigned.ticketIdLabel')}:</strong> #${shortTicketId}</p>
+                    <p><strong>${t('email.worker.newTicketAssigned.titleLabel')}:</strong> ${values.title}</p>
+                    <p><strong>${t('email.worker.newTicketAssigned.createdByLabel')}:</strong> ${userProfile.displayName || userProfile.email}</p>
+                    <p><strong>${t('email.worker.newTicketAssigned.descriptionLabel')}:</strong></p>
                     <div style="padding: 10px; border-left: 3px solid #eee; margin: 10px 0;">
                         <p style="margin:0;">${values.description.replace(/\n/g, '<br>')}</p>
                     </div>
-                    <p>The ticket status is 'Open'. Please review and take action.</p>
-                    ${successfulUploads.length > 0 ? `<p><strong>Attachments:</strong> ${successfulUploads.map(att => `<a href="${att.url}">${att.name}</a>`).join(', ')}</p>` : ''}
+                    <p>${t('email.worker.newTicketAssigned.statusNote')}</p>
+                    ${successfulUploads.length > 0 ? `<p><strong>${t('email.worker.newTicketAssigned.attachmentsLabel')}:</strong> ${successfulUploads.map(att => `<a href="${att.url}">${att.name}</a>`).join(', ')}</p>` : ''}
                     ${standardFooter}
                 `,
             });
         }
       }
 
-
       router.push(`/dashboard/tickets/${ticketId}`);
     } catch (error) {
       console.error("Error creating ticket:", error);
       toast({
-        title: "Error",
-        description: "Failed to create ticket. Please try again.",
+        title: t('errorCreatingTicket.title'),
+        description: t('errorCreatingTicket.description'),
         variant: "destructive",
       });
     } finally {
@@ -341,6 +324,9 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
   const isUploadingAnyFile = uploadableFiles.some(f => f.status === 'uploading');
   const hasUploadErrors = uploadableFiles.some(f => f.status === 'error');
 
+  if (isLoadingTranslations) {
+    return <div className="flex justify-center items-center h-64"><LoadingSpinner /></div>;
+  }
 
   return (
     <Form {...form}>
@@ -350,12 +336,12 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
           name="title"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Title</FormLabel>
+              <FormLabel>{t('titleLabel')}</FormLabel>
               <FormControl>
-                <Input placeholder="e.g., App not loading on startup" {...field} />
+                <Input placeholder={t('titlePlaceholder')} {...field} />
               </FormControl>
               <FormDescription>
-                A brief summary of your issue.
+                {t('titleDescription')}
               </FormDescription>
               <FormMessage />
             </FormItem>
@@ -366,16 +352,16 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
           name="description"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Description</FormLabel>
+              <FormLabel>{t('descriptionLabel')}</FormLabel>
               <FormControl>
                 <Textarea
-                  placeholder="Please describe the issue in detail..."
+                  placeholder={t('descriptionPlaceholder')}
                   className="min-h-[120px]"
                   {...field}
                 />
               </FormControl>
               <FormDescription>
-                Provide as much detail as possible, including steps to reproduce the issue if applicable.
+                {t('descriptionDescription')}
               </FormDescription>
               <FormMessage />
             </FormItem>
@@ -383,7 +369,7 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
         />
 
         <FormItem>
-          <FormLabel>Attachments (Optional)</FormLabel>
+          <FormLabel>{t('attachmentsLabel')}</FormLabel>
           <FormControl>
             <div className="flex flex-col gap-4 rounded-lg border border-dashed border-input p-6">
               <div 
@@ -392,10 +378,10 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
               >
                 <UploadCloud className="h-12 w-12 text-muted-foreground mb-2" />
                 <p className="text-sm text-muted-foreground">
-                  Drag & drop files here, or click to select.
+                  {t('attachmentsDragDrop')}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Up to {MAX_FILES} files, {MAX_FILE_SIZE_MB}MB each. Images & videos accepted.
+                  {t('attachmentsLimits', { maxFiles: MAX_FILES, maxFileSizeMB: MAX_FILE_SIZE_MB })}
                 </p>
                 <Input
                   ref={fileInputRef}
@@ -410,14 +396,14 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
             </div>
           </FormControl>
            <FormDescription>
-             Attach screenshots, videos, or logs to help explain the issue.
+             {t('attachmentsDescription')}
            </FormDescription>
           <FormMessage />
         </FormItem>
         
         {uploadableFiles.length > 0 && (
           <div className="space-y-3 rounded-md border p-4">
-            <h4 className="text-sm font-medium">Selected Files:</h4>
+            <h4 className="text-sm font-medium">{t('selectedFiles')}</h4>
             {uploadableFiles.map(uf => (
               <div key={uf.id} className="flex items-center justify-between gap-3 p-2 rounded-md hover:bg-muted/50">
                 <div className="flex items-center gap-2 overflow-hidden">
@@ -433,10 +419,10 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
                        <Progress value={uf.progress} className="h-2" />
                     </div>
                   )}
-                  {uf.status === 'success' && <span className="text-xs text-green-600">Uploaded</span>}
+                  {uf.status === 'success' && <span className="text-xs text-green-600">{t('uploadStatus.success')}</span>}
                   {uf.status === 'error' && (
                     <div className="flex items-center gap-1 text-xs text-destructive" title={uf.error}>
-                      <AlertCircle className="h-4 w-4"/> Error 
+                      <AlertCircle className="h-4 w-4"/> {t('uploadStatus.error')}
                     </div>
                   )}
                   {(uf.status === 'pending' || uf.status === 'error') && (
@@ -447,7 +433,7 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
                       className="h-7 w-7"
                       onClick={() => handleFileUpload(uf)} 
                       disabled={uf.status === 'uploading'}
-                      title="Retry Upload"
+                      title={t('retryUpload')}
                     >
                       <UploadCloud className="h-4 w-4" />
                     </Button>
@@ -459,7 +445,7 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
                     className="h-7 w-7 text-destructive hover:text-destructive"
                     onClick={() => handleRemoveFile(uf.id)}
                     disabled={uf.status === 'uploading' && uf.progress > 0 && uf.progress < 100}
-                    title="Remove File"
+                    title={t('removeFile')}
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
@@ -469,18 +455,17 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
           </div>
         )}
 
-
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <FormField
             control={form.control}
             name="category"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Category</FormLabel>
+                <FormLabel>{t('categoryLabel')}</FormLabel>
                 <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isSubmittingMainForm || isUploadingAnyFile}>
                   <FormControl>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select a category" />
+                      <SelectValue placeholder={t('categoryPlaceholder')} />
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
@@ -500,11 +485,11 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
             name="priority"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Priority</FormLabel>
+                <FormLabel>{t('priorityLabel')}</FormLabel>
                 <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isSubmittingMainForm || isUploadingAnyFile}>
                   <FormControl>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select a priority level" />
+                      <SelectValue placeholder={t('priorityPlaceholder')} />
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
@@ -526,12 +511,10 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
           className="w-full sm:w-auto"
         >
           {(isSubmittingMainForm || isUploadingAnyFile) && <LoadingSpinner size="sm" className="mr-2" />}
-          {isUploadingAnyFile ? "Uploading files..." : isSubmittingMainForm ? "Submitting..." : "Submit Ticket"}
+          {isUploadingAnyFile ? t('uploadingButton') : isSubmittingMainForm ? t('submittingButton') : t('submitButton')}
         </Button>
-        {hasUploadErrors && <p className="text-sm text-destructive">Some files failed to upload. Please remove them or retry.</p>}
+        {hasUploadErrors && <p className="text-sm text-destructive">{t('uploadErrorsMessage')}</p>}
       </form>
     </Form>
   );
 }
-
-    
