@@ -20,11 +20,12 @@ const geistMono = Geist_Mono({
 });
 
 export async function generateMetadata(): Promise<Metadata> {
-  const t = await getI18n();
+  // const t = await getI18n(); // This would require RootLayout to be async
+  // For now, using a simple name. If translations are needed here, RootLayout must be async.
   return {
     title: {
-      default: t('header.appName'),
-      template: `%s | ${t('header.appName')}`,
+      default: 'FireDesk', // Fallback or default app name
+      template: `%s | FireDesk`,
     },
     description: "A Help Desk Ticketing System built with Next.js and Firebase.",
   };
@@ -37,7 +38,7 @@ export const viewport: Viewport = {
 
 interface RootLayoutProps {
   children: React.ReactNode;
-  params: { locale?: string };
+  params: { locale?: string }; // locale from URL, can be undefined
 }
 
 export default async function RootLayout({
@@ -48,10 +49,10 @@ export default async function RootLayout({
   console.log(`[RootLayout] Received params.locale: "${paramsLocale}" (Type: ${typeof paramsLocale})`);
 
   let localeToUse: Locale;
-  let serverDeterminedLocale: string | undefined; // Can be undefined
+  let serverDeterminedLocale: string | undefined;
 
   try {
-    serverDeterminedLocale = await getCurrentLocaleServer();
+    serverDeterminedLocale = await getCurrentLocaleServer(); // This is the locale from next-international middleware
     console.log(`[RootLayout] getCurrentLocaleServer() returned: "${serverDeterminedLocale}" (Type: ${typeof serverDeterminedLocale})`);
 
     if (serverDeterminedLocale && locales.includes(serverDeterminedLocale as Locale)) {
@@ -79,6 +80,10 @@ export default async function RootLayout({
 
   console.log(`[RootLayout] Effective locale for I18nProviderClient: "${localeToUse}" (Type: ${typeof localeToUse})`);
 
+  // If generateMetadata needs to be async and use translations:
+  // const t = await getI18n(); // Call this after localeToUse is determined
+  // Then update metadata object with t('some.key')
+
   return (
     <html lang={localeToUse} suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
@@ -92,3 +97,5 @@ export default async function RootLayout({
     </html>
   );
 }
+
+    

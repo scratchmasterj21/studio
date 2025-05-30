@@ -6,7 +6,7 @@ import { onAuthStateChanged, signInWithPopup, signOut as firebaseSignOut } from 
 import type { FirebaseError } from 'firebase/app';
 import { doc, getDoc, serverTimestamp, setDoc, Timestamp } from 'firebase/firestore';
 import { usePathname, useRouter as useNextRouter } from 'next/navigation'; // Use Next.js router
-import { useCurrentLocale } from '@/lib/i18n/client';
+import { useCurrentLocale } from '@/lib/i18n/client'; // For getting current locale
 import type { ReactNode} from 'react';
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { auth, db, googleProvider } from '@/lib/firebase';
@@ -29,9 +29,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [isSigningIn, setIsSigningIn] = useState(false);
-  const router = useNextRouter(); // Use Next.js router for base path redirects
+  const router = useNextRouter(); // Using Next.js router for base path redirects
   const pathname = usePathname(); // next/navigation for raw path
   const currentLocale = useCurrentLocale();
+  console.log('[AuthProvider] currentLocale from useCurrentLocale():', currentLocale); // ADDED FOR DEBUGGING
   const { toast } = useToast();
 
   useEffect(() => {
@@ -80,7 +81,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           
           // Only redirect to login if not already on public pages and not internal Next.js paths
           const publicPaths = ['/login', '/', `/${currentLocale}/login`, `/${currentLocale}/`];
-          if (!publicPaths.includes(pathname) && !pathname.startsWith('/_next/')) {
+          // Check if currentLocale is valid before using in path construction
+          const isValidLocaleForPath = currentLocale && currentLocale !== 'undefined';
+          const localePrefixedLogin = isValidLocaleForPath ? `/${currentLocale}/login` : '/login';
+          const localePrefixedRoot = isValidLocaleForPath ? `/${currentLocale}/` : '/';
+          
+          const currentPublicPaths = ['/login', '/', localePrefixedLogin, localePrefixedRoot].filter(Boolean);
+
+
+          if (!currentPublicPaths.includes(pathname) && !pathname.startsWith('/_next/')) {
              router.replace('/login');
           }
         }
@@ -94,7 +103,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     });
 
     return () => unsubscribe();
-  }, [router, toast, pathname, currentLocale]);
+  }, [router, toast, pathname, currentLocale]); // currentLocale added as dependency
 
   const signInWithGoogle = async () => {
     if (isSigningIn) {
@@ -203,8 +212,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
   
   // Check if we are on any public path (could be prefixed or unprefixed)
-  const publicPaths = ['/login', '/', `/${currentLocale}/login`, `/${currentLocale}/`];
-  const isOnPublicPath = publicPaths.includes(pathname);
+  // Ensure currentLocale is valid before using in path construction
+  const isValidLocaleForPath = currentLocale && currentLocale !== 'undefined';
+  const localePrefixedLogin = isValidLocaleForPath ? `/${currentLocale}/login` : '/login';
+  const localePrefixedRoot = isValidLocaleForPath ? `/${currentLocale}/` : '/';
+  const publicPathsToCheck = ['/login', '/', localePrefixedLogin, localePrefixedRoot].filter(Boolean);
+  const isOnPublicPath = publicPathsToCheck.includes(pathname);
+
 
   if (loading && !isOnPublicPath) {
     return (
@@ -236,3 +250,5 @@ export const useAuth = (): AuthContextType => {
   }
   return context;
 };
+
+    
