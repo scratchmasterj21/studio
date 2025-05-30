@@ -50,12 +50,17 @@ export default async function RootLayout({
   let localeToUse: Locale;
   try {
     const serverDeterminedLocale = await getCurrentLocale(); // This is from your @/lib/i18n/server.ts
-    if (locales.includes(serverDeterminedLocale as Locale)) {
+    
+    // Explicitly check if serverDeterminedLocale is the string "undefined"
+    if (typeof serverDeterminedLocale === 'string' && serverDeterminedLocale.toLowerCase() === 'undefined') {
+      console.warn(`[RootLayout] getCurrentLocale() returned the string "undefined". Defaulting to: ${defaultLocale}`);
+      localeToUse = defaultLocale;
+    } else if (locales.includes(serverDeterminedLocale as Locale)) {
       localeToUse = serverDeterminedLocale as Locale;
     } else {
-      // This case should ideally not be hit if middleware and next-international are working correctly
-      // as getCurrentLocale() should return a configured locale.
-      console.warn(`[RootLayout] Locale from server ("${serverDeterminedLocale}") is not in supported locales [${locales.join(', ')}]. Defaulting to: ${defaultLocale}`);
+      // This handles cases where serverDeterminedLocale is undefined, null, 
+      // or an unsupported string
+      console.warn(`[RootLayout] Locale from server ("${serverDeterminedLocale}") is not valid or not in supported locales [${locales.join(', ')}]. Defaulting to: ${defaultLocale}`);
       localeToUse = defaultLocale;
     }
   } catch (e) {
