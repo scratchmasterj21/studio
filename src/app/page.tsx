@@ -2,27 +2,23 @@
 "use client";
 
 import { useEffect } from 'react';
-import { useRouter as useNextRouter } from 'next/navigation'; 
+import { useRouter } from 'next/navigation'; // Changed back to next/navigation
 import { useAuth } from '@/components/auth/AuthProvider';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
-import { defaultLocale } from '@/lib/i18n/settings';
 
 export default function HomePage() {
-  const { user, loading, currentLocale } = useAuth(); // Get currentLocale from AuthProvider
-  const router = useNextRouter(); 
+  const { user, loading } = useAuth();
+  const router = useRouter(); 
 
   useEffect(() => {
     if (!loading) {
-      let targetPath;
       if (user) {
-        targetPath = currentLocale === defaultLocale ? '/dashboard' : `/${currentLocale}/dashboard`;
-        router.replace(targetPath);
+        router.replace('/dashboard');
       } else {
-        targetPath = currentLocale === defaultLocale ? '/login' : `/${currentLocale}/login`;
-        router.replace(targetPath);
+        router.replace('/login');
       }
     }
-  }, [user, loading, router, currentLocale]);
+  }, [user, loading, router]);
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center p-6">

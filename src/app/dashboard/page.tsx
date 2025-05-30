@@ -8,7 +8,7 @@ import LoadingSpinner from '@/components/common/LoadingSpinner';
 import type { Ticket, TicketStatus, TicketPriority } from '@/lib/types';
 import { onTicketsUpdate } from '@/lib/firestore';
 import { Button } from '@/components/ui/button';
-import Link from 'next/link';
+import Link from 'next/link'; // Changed back to next/link
 import { PlusCircle, Filter, Search, Briefcase, Clock, FileText, ArrowDownUp, CheckCircle2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import {

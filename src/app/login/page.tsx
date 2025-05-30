@@ -2,25 +2,21 @@
 "use client";
 
 import { useEffect } from 'react';
-import { useRouter as useNextRouter, usePathname } from 'next/navigation'; 
+import { useRouter as useNextRouter } from 'next/navigation'; 
 import { SignInButton } from '@/components/auth/SignInButton';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Ticket } from 'lucide-react';
-import { useI18n, useCurrentLocale } from '@/lib/i18n/client';
 
 export default function LoginPage() {
   const { user, loading } = useAuth();
-  const router = useNextRouter(); // Using Next.js router for base path redirects
-  const t = useI18n();
-  const currentLocale = useCurrentLocale();
+  const router = useNextRouter(); 
 
   useEffect(() => {
     if (!loading && user) {
-      // The middleware should handle locale prefixing if necessary for /dashboard
       router.replace('/dashboard'); 
     }
-  }, [user, loading, router, currentLocale]);
+  }, [user, loading, router]);
 
   if (loading || (!loading && user)) {
     return (
@@ -37,20 +33,20 @@ export default function LoginPage() {
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary text-primary-foreground">
             <Ticket size={32} />
           </div>
-          <CardTitle className="text-3xl font-bold">{t('loginPage.title')}</CardTitle>
+          <CardTitle className="text-3xl font-bold">FireDesk</CardTitle>
           <CardDescription className="text-lg">
-            {t('loginPage.description')}
+            Sign in to access the help desk.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col items-center space-y-6 p-8">
           <SignInButton />
           <p className="text-xs text-muted-foreground">
-            {t('loginPage.terms')}
+            By signing in, you agree to our terms of service.
           </p>
         </CardContent>
       </Card>
        <footer className="mt-8 text-center text-sm text-muted-foreground">
-        {t('loginPage.footer', { year: new Date().getFullYear() })}
+        FireDesk © {new Date().getFullYear()}. All rights reserved.
       </footer>
     </div>
   );

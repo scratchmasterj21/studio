@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation'; // Changed back
 import { useAuth } from '@/components/auth/AuthProvider';
 import { AppHeader } from '@/components/layout/AppHeader';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
@@ -30,7 +30,9 @@ export default function DashboardLayout({
     );
   }
   
-  if (pathname.startsWith('/login')) {
+  // If already on a dashboard path and user tries to go to /login or /, redirect them back to dashboard
+  // This covers cases where direct navigation to /login might occur after being logged in.
+  if (pathname === '/login' || pathname === '/') {
      router.replace('/dashboard');
      return (
         <div className="flex min-h-screen items-center justify-center">
