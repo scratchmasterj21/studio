@@ -1,0 +1,107 @@
+
+{
+  "header": {
+    "appName": "FireDesk",
+    "myTickets": "My Tickets",
+    "newTicketLink": "New Ticket",
+    "adminOverview": "Admin Overview",
+    "manageUsers": "Manage Users",
+    "profile": "Profile",
+    "signOut": "Sign Out",
+    "signIn": "Sign In"
+  },
+  "loginPage": {
+    "title": "FireDesk",
+    "description": "Sign in to access the help desk.",
+    "signInWithGoogle": "Sign in with Google",
+    "terms": "By signing in, you agree to our terms of service.",
+    "footer": "FireDesk © {year}. All rights reserved."
+  },
+  "dashboardPage": {
+    "adminTitle": "All Tickets Management",
+    "workerTitle": "My Assigned Tickets",
+    "userTitle": "My Submitted Tickets",
+    "defaultTitle": "Tickets",
+    "createNewTicketButton": "Create New Ticket",
+    "filtersSearchTitle": "Filters & Search",
+    "filtersSearchDescription": "Filter tickets by status, priority, or search by title/description.",
+    "searchPlaceholder": "Search by title or description...",
+    "statusFilterLabel": "Status",
+    "statusFilterPlaceholder": "Filter by Status",
+    "allStatuses": "All Statuses",
+    "priorityFilterLabel": "Priority",
+    "priorityFilterPlaceholder": "Filter by Priority",
+    "allPriorities": "All Priorities",
+    "sortTicketsTitle": "Sort Tickets",
+    "sortByLabel": "Sort by",
+    "sortTicketsPlaceholder": "Sort tickets",
+    "workerStats": {
+      "openTickets": "Open Tickets",
+      "openTicketsDesc": "Currently assigned to you",
+      "inProgressTickets": "In Progress Tickets",
+      "inProgressTicketsDesc": "Currently being worked on"
+    },
+     "userStats": {
+      "yourOpenTickets": "Your Open Tickets",
+      "yourOpenTicketsDesc": "Awaiting agent response",
+      "yourInProgressTickets": "Your In-Progress Tickets",
+      "yourInProgressTicketsDesc": "Being actively worked on",
+      "yourResolvedTickets": "Your Resolved Tickets",
+      "yourResolvedTicketsDesc": "Awaiting your confirmation"
+    }
+  },
+  "languageSwitcher": {
+    "changeLanguage": "Change Language",
+    "english": "English",
+    "japanese": "Japanese"
+  },
+  "ticketForm": {
+    "createTitle": "Create New Support Ticket",
+    "createDescription": "Fill out the form below to submit a new support ticket. We'll get back to you as soon as possible.",
+    "titleLabel": "Title",
+    "titlePlaceholder": "e.g., App not loading on startup",
+    "titleDescription": "A brief summary of your issue.",
+    "descriptionLabel": "Description",
+    "descriptionPlaceholder": "Please describe the issue in detail...",
+    "descriptionDescription": "Provide as much detail as possible, including steps to reproduce the issue if applicable.",
+    "attachmentsLabel": "Attachments (Optional)",
+    "attachmentsDragDrop": "Drag & drop files here, or click to select.",
+    "attachmentsLimits": "Up to {maxFiles} files, {maxFileSizeMB}MB each. Images & videos accepted.",
+    "attachmentsDescription": "Attach screenshots, videos, or logs to help explain the issue.",
+    "selectedFiles": "Selected Files:",
+    "uploadError": "Upload Error: {fileName}",
+    "retryUpload": "Retry Upload",
+    "removeFile": "Remove File",
+    "categoryLabel": "Category",
+    "categoryPlaceholder": "Select a category",
+    "priorityLabel": "Priority",
+    "priorityPlaceholder": "Select a priority level",
+    "submitButton": "Submit Ticket",
+    "submittingButton": "Submitting...",
+    "uploadingButton": "Uploading files...",
+    "uploadErrorsMessage": "Some files failed to upload. Please remove them or retry."
+  },
+  "profilePage": {
+    "title": "My Profile",
+    "description": "View your FireDesk account details.",
+    "displayNameLabel": "Display Name",
+    "displayNameNotSet": "Not Set",
+    "emailAddressLabel": "Email Address",
+    "emailNotSet": "Not Set",
+    "roleLabel": "Role"
+  },
+  "adminUsersPage": {
+    "title": "User Management",
+    "description": "View and manage all user roles in the system.",
+    "noUsersFound": "No users found in the system.",
+    "tableCaption": "A list of all registered users.",
+    "uidHeader": "UID",
+    "displayNameHeader": "Display Name",
+    "emailHeader": "Email",
+    "currentRoleHeader": "Current Role",
+    "changeRoleHeader": "Change Role",
+    "createdAtHeader": "Created At",
+    "cannotChangeOwnRole": "Cannot change own role",
+    "roleSelectPlaceholder": "Change role"
+  }
+}

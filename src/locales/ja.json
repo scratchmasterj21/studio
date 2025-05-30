@@ -1,0 +1,107 @@
+
+{
+  "header": {
+    "appName": "ファイアデスク",
+    "myTickets": "私のチケット",
+    "newTicketLink": "新しいチケット",
+    "adminOverview": "管理者概要",
+    "manageUsers": "ユーザー管理",
+    "profile": "プロフィール",
+    "signOut": "サインアウト",
+    "signIn": "サインイン"
+  },
+  "loginPage": {
+    "title": "ファイアデスク",
+    "description": "ヘルプデスクにアクセスするにはサインインしてください。",
+    "signInWithGoogle": "Googleでサインイン",
+    "terms": "サインインすることにより、利用規約に同意したことになります。",
+    "footer": "ファイアデスク © {year}. 全著作権所有。"
+  },
+  "dashboardPage": {
+    "adminTitle": "全チケット管理",
+    "workerTitle": "割り当てられたチケット",
+    "userTitle": "送信済みチケット",
+    "defaultTitle": "チケット",
+    "createNewTicketButton": "新しいチケットを作成",
+    "filtersSearchTitle": "フィルターと検索",
+    "filtersSearchDescription": "ステータス、優先度でチケットをフィルタリング、またはタイトル/説明で検索します。",
+    "searchPlaceholder": "タイトルまたは説明で検索...",
+    "statusFilterLabel": "ステータス",
+    "statusFilterPlaceholder": "ステータスでフィルタリング",
+    "allStatuses": "すべてのステータス",
+    "priorityFilterLabel": "優先度",
+    "priorityFilterPlaceholder": "優先度でフィルタリング",
+    "allPriorities": "すべての優先度",
+    "sortTicketsTitle": "チケットを並び替え",
+    "sortByLabel": "並び替え基準",
+    "sortTicketsPlaceholder": "チケットを並び替え",
+    "workerStats": {
+      "openTickets": "オープンチケット",
+      "openTicketsDesc": "現在あなたに割り当てられています",
+      "inProgressTickets": "進行中のチケット",
+      "inProgressTicketsDesc": "現在作業中です"
+    },
+    "userStats": {
+      "yourOpenTickets": "あなたのオープンチケット",
+      "yourOpenTicketsDesc": "エージェントの返信待ち",
+      "yourInProgressTickets": "あなたの進行中チケット",
+      "yourInProgressTicketsDesc": "現在作業中です",
+      "yourResolvedTickets": "あなたの解決済みチケット",
+      "yourResolvedTicketsDesc": "あなたの確認待ち"
+    }
+  },
+  "languageSwitcher": {
+    "changeLanguage": "言語を変更",
+    "english": "英語",
+    "japanese": "日本語"
+  },
+  "ticketForm": {
+    "createTitle": "新しいサポートチケットを作成",
+    "createDescription": "以下のフォームに記入して、新しいサポートチケットを送信してください。できるだけ早くご連絡いたします。",
+    "titleLabel": "タイトル",
+    "titlePlaceholder": "例：起動時にアプリが読み込まれない",
+    "titleDescription": "問題の簡単な概要。",
+    "descriptionLabel": "説明",
+    "descriptionPlaceholder": "問題を詳細に説明してください...",
+    "descriptionDescription": "可能な限り詳細を提供してください。該当する場合は、問題を再現する手順を含めてください。",
+    "attachmentsLabel": "添付ファイル（任意）",
+    "attachmentsDragDrop": "ここにファイルをドラッグ＆ドロップするか、クリックして選択します。",
+    "attachmentsLimits": "最大{maxFiles}ファイル、各{maxFileSizeMB}MBまで。画像と動画が利用可能です。",
+    "attachmentsDescription": "問題を説明するために、スクリーンショット、動画、またはログを添付してください。",
+    "selectedFiles": "選択されたファイル：",
+    "uploadError": "アップロードエラー：{fileName}",
+    "retryUpload": "アップロードを再試行",
+    "removeFile": "ファイルを削除",
+    "categoryLabel": "カテゴリ",
+    "categoryPlaceholder": "カテゴリを選択",
+    "priorityLabel": "優先度",
+    "priorityPlaceholder": "優先度レベルを選択",
+    "submitButton": "チケットを送信",
+    "submittingButton": "送信中...",
+    "uploadingButton": "ファイルをアップロード中...",
+    "uploadErrorsMessage": "一部のファイルがアップロードに失敗しました。削除するか、再試行してください。"
+  },
+  "profilePage": {
+    "title": "私のプロフィール",
+    "description": "FireDeskアカウントの詳細を表示します。",
+    "displayNameLabel": "表示名",
+    "displayNameNotSet": "未設定",
+    "emailAddressLabel": "メールアドレス",
+    "emailNotSet": "未設定",
+    "roleLabel": "役割"
+  },
+  "adminUsersPage": {
+    "title": "ユーザー管理",
+    "description": "システム内のすべてのユーザー役割を表示および管理します。",
+    "noUsersFound": "システムにユーザーが見つかりません。",
+    "tableCaption": "登録されているすべてのユーザーのリスト。",
+    "uidHeader": "UID",
+    "displayNameHeader": "表示名",
+    "emailHeader": "メール",
+    "currentRoleHeader": "現在の役割",
+    "changeRoleHeader": "役割を変更",
+    "createdAtHeader": "作成日時",
+    "cannotChangeOwnRole": "自分の役割は変更できません",
+    "roleSelectPlaceholder": "役割を変更"
+  }
+}

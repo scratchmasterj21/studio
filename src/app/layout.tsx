@@ -4,6 +4,7 @@ import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import { AuthProvider } from '@/components/auth/AuthProvider';
 import { Toaster } from '@/components/ui/toaster';
+import { LocaleProvider } from '@/contexts/LocaleContext'; // Import LocaleProvider
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -15,9 +16,11 @@ const geistMono = Geist_Mono({
   subsets: ['latin'],
 });
 
+// For this simplified approach, metadata will be static English
+// For fully dynamic metadata, a more complex server-side solution would be needed without next-international
 export const metadata: Metadata = {
   title: {
-    default: 'FireDesk',
+    default: 'FireDesk', // Static title
     template: `%s | FireDesk`,
   },
   description: "A Help Desk Ticketing System built with Next.js and Firebase.",
@@ -36,12 +39,15 @@ export default function RootLayout({
   children,
 }: Readonly<RootLayoutProps>) {
   return (
+    // The lang attribute will be updated by LocaleProvider client-side
     <html lang="en" suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <AuthProvider>
-          {children}
-          <Toaster />
-        </AuthProvider>
+        <LocaleProvider> {/* Wrap with LocaleProvider */}
+          <AuthProvider>
+            {children}
+            <Toaster />
+          </AuthProvider>
+        </LocaleProvider>
       </body>
     </html>
   );
