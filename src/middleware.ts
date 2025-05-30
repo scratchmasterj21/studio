@@ -1,20 +1,25 @@
-
-import type { NextRequest } from 'next/server';
 import { createI18nMiddleware } from 'next-international/middleware';
-import { getLocaleConfig } from '@/lib/i18n/settings';
+import { NextRequest } from 'next/server';
 
 const I18nMiddleware = createI18nMiddleware({
-  locales: getLocaleConfig().locales,
-  defaultLocale: getLocaleConfig().defaultLocale,
-  // Optionally, you can customize URL handling:
-  // urlMappingStrategy: 'rewrite', // 'redirect' or 'rewrite'
-  // trailingSlash: false,
+  locales: ['en', 'ja'],
+  defaultLocale: 'en',
+  // Optional: exclude certain paths from locale handling
+  // exclude: ['/api', '/_next', '/favicon.ico']
 });
 
 export function middleware(request: NextRequest) {
+  // Let next-international handle the locale detection and routing
   return I18nMiddleware(request);
 }
 
 export const config = {
-  matcher: ['/((?!api|_next/static|_next/image|favicon.ico|assets).*)'],
+  matcher: [
+    // Match all pathnames except for
+    // - api routes
+    // - _next/static (static files)
+    // - _next/image (image optimization files)
+    // - favicon.ico (favicon file)
+    '/((?!api|_next/static|_next/image|favicon.ico).*)',
+  ],
 };
