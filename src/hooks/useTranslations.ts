@@ -8,7 +8,10 @@ import { useLocale, type Locale } from '@/contexts/LocaleContext';
 // For simplicity, using Record<string, any> but a more specific type is better
 type Translations = Record<string, any>; 
 
-const loadedTranslations: Partial<Record<Locale, Translations>> = {};
+const loadedTranslations: Partial<Record<Locale, Record<string, Translations>>> = { // Store namespaces
+  en: {},
+  ja: {},
+};
 
 export const useTranslations = (namespace?: string) => {
   const { locale, loadingLocale } = useLocale();
@@ -20,72 +23,103 @@ export const useTranslations = (namespace?: string) => {
 
     const loadTranslations = async () => {
       setIsLoading(true);
-      if (loadedTranslations[locale]) {
-        setTranslations(loadedTranslations[locale]!);
+      // Check if namespace is already loaded for the current locale
+      if (namespace && loadedTranslations[locale]?.[namespace]) {
+        setTranslations(loadedTranslations[locale]![namespace]!);
         setIsLoading(false);
         return;
       }
+      // Check if base translations (no namespace) are loaded
+      if (!namespace && loadedTranslations[locale]?.['__base__']) {
+        setTranslations(loadedTranslations[locale]!['__base__']!);
+        setIsLoading(false);
+        return;
+      }
+
       try {
-        // Dynamically import the JSON file
-        // Make sure your tsconfig.json has "resolveJsonModule": true and "esModuleInterop": true
         const module = await import(`@/locales/${locale}.json`);
-        const data = module.default as Translations;
-        loadedTranslations[locale] = data;
-        setTranslations(data);
-      } catch (error) {
-        console.error(`Could not load translations for locale "${locale}":`, error);
-        // Fallback to English if current locale fails, and English hasn't failed before
-        if (locale !== 'en' && !loadedTranslations['en']) {
-          try {
-            const enModule = await import(`@/locales/en.json`);
-            const enData = enModule.default as Translations;
-            loadedTranslations['en'] = enData;
-            setTranslations(enData);
-          } catch (enError) {
-            console.error(`Could not load fallback English translations:`, enError);
-            setTranslations({}); // Empty object if all fails
-          }
-        } else if (locale !== 'en' && loadedTranslations['en']) {
-           setTranslations(loadedTranslations['en']!); // Use cached English
-        } else {
-           setTranslations({}); // Empty if 'en' itself failed
+        const allTranslationsForLocale = module.default as Record<string, Translations>; // Assuming structure { namespace1: {...}, namespace2: {...} } or flat
+
+        if (!loadedTranslations[locale]) {
+          loadedTranslations[locale] = {};
         }
+
+        let specificTranslations;
+        if (namespace) {
+          specificTranslations = allTranslationsForLocale[namespace];
+          if (specificTranslations) {
+            loadedTranslations[locale]![namespace] = specificTranslations;
+          } else {
+            console.warn(`Namespace "${namespace}" not found in locale "${locale}". Loading base translations.`);
+            specificTranslations = allTranslationsForLocale; // Fallback to all if namespace missing
+            loadedTranslations[locale]!['__base__'] = specificTranslations; // Cache base if namespace not found
+          }
+        } else {
+          specificTranslations = allTranslationsForLocale;
+          loadedTranslations[locale]!['__base__'] = specificTranslations;
+        }
+        
+        setTranslations(specificTranslations || {});
+
+      } catch (error) {
+        console.error(`Could not load translations for locale "${locale}" (namespace: ${namespace || 'base'}):`, error);
+        // Fallback logic can be more sophisticated, e.g., trying to load 'en' if current locale fails
+        setTranslations({}); // Empty object if all fails
       } finally {
         setIsLoading(false);
       }
     };
 
     loadTranslations();
-  }, [locale, loadingLocale]);
+  }, [locale, loadingLocale, namespace]);
 
-  const t = useCallback((key: string, params?: Record<string, string | number>): string => {
+  const t = useCallback((key: string, paramsOrFallback?: Record<string, string | number> | string): string => {
     if (isLoading || !translations) {
-      return key; // Or a loading indicator string
+      // If still loading or translations are null, decide on fallback.
+      // If paramsOrFallback is a string, it's intended as a fallback.
+      return typeof paramsOrFallback === 'string' ? paramsOrFallback : key;
     }
 
+    // Resolve the translation string from the potentially nested translations object
     let translation = key
       .split('.')
-      .reduce((obj, k) => (obj && obj[k] !== 'undefined' ? obj[k] : undefined), namespace ? translations[namespace] : translations);
+      .reduce((obj, k) => (obj && typeof obj === 'object' && obj[k] !== undefined ? obj[k] : undefined), translations as any);
 
     if (translation === undefined) {
-      console.warn(`Translation not found for key: "${namespace ? namespace + '.' : ''}${key}" in locale "${locale}"`);
-      return key; // Return key if not found
+      // console.warn(`Translation not found for key: "${namespace ? namespace + '.' : ''}${key}" in locale "${locale}". Using fallback.`);
+      return typeof paramsOrFallback === 'string' ? paramsOrFallback : key;
     }
     
     if (typeof translation !== 'string') {
-        console.warn(`Translation for key: "${namespace ? namespace + '.' : ''}${key}" in locale "${locale}" is not a string.`);
-        return key;
+        // console.warn(`Translation for key: "${namespace ? namespace + '.' : ''}${key}" in locale "${locale}" is not a string. Found:`, translation);
+        return typeof paramsOrFallback === 'string' ? paramsOrFallback : key; // Fallback if found value isn't a string
     }
 
-
-    if (params) {
-      Object.keys(params).forEach(paramKey => {
-        translation = translation.replace(new RegExp(`{${paramKey}}`, 'g'), String(params[paramKey]));
+    // Perform interpolation only if paramsOrFallback is an object
+    if (paramsOrFallback && typeof paramsOrFallback === 'object' && !Array.isArray(paramsOrFallback)) {
+      let result = translation;
+      Object.keys(paramsOrFallback).forEach(paramKey => {
+        if (paramKey === "") { // Prevent issues with empty keys
+            console.warn(`[useTranslations] Attempting to interpolate with an empty paramKey for key "${key}". Skipping this parameter.`);
+            return; 
+        }
+        // Construct regex to be safe: escape curly braces and the paramKey itself if it could contain special characters
+        // For simple placeholders like {name}, this is robust.
+        const placeholder = `{${paramKey}}`;
+        // Basic escape for common regex special characters in placeholder, then build RegExp
+        const escapedPlaceholder = placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        try {
+          const regex = new RegExp(escapedPlaceholder, 'g');
+          result = result.replace(regex, String(paramsOrFallback[paramKey]));
+        } catch (e) {
+            console.error(`[useTranslations] Error creating/using RegExp for key "${key}", placeholder "${placeholder}":`, e);
+        }
       });
+      return result;
     }
 
-    return translation;
+    return translation; // Return the found translation if no (object) params are provided
   }, [translations, locale, isLoading, namespace]);
 
-  return { t, isLoadingTranslations: isLoading, currentLocale: locale };
+  return { t, isLoadingTranslations: isLoading || loadingLocale, currentLocale: locale };
 };
