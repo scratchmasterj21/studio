@@ -24,11 +24,11 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users as UsersIcon } from 'lucide-react'; // Removed Edit3 as it's not used
+import { Users as UsersIcon } from 'lucide-react'; 
 import { useAuth } from '@/components/auth/AuthProvider';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
-import { useTranslations } from '@/hooks/useTranslations'; // Import useTranslations
+import { useTranslations } from '@/hooks/useTranslations'; 
 
 const availableRoles: UserRole[] = ['user', 'worker', 'admin'];
 
@@ -38,7 +38,8 @@ export default function ManageUsersPage() {
   const [isLoadingUsers, setIsLoadingUsers] = useState(true);
   const [updatingRoleId, setUpdatingRoleId] = useState<string | null>(null);
   const { toast } = useToast();
-  const { t, isLoadingTranslations } = useTranslations('adminUsersPage'); // Use translations
+  const { t, isLoadingTranslations } = useTranslations('adminUsersPage'); 
+  const { t: tValues } = useTranslations('ticketValues');
 
   useEffect(() => {
     setIsLoadingUsers(true);
@@ -76,8 +77,10 @@ export default function ManageUsersPage() {
       setUpdatingRoleId(null);
     }
   };
+  
+  const toKey = (str: string) => str.toLowerCase().replace(/\s+/g, '');
 
-  if (isLoadingUsers || !currentAdminProfile || isLoadingTranslations) {
+  if (isLoadingUsers || !currentAdminProfile || isLoadingTranslations || (tValues && !tValues('roles.user'))) {
     return (
       <div className="flex justify-center items-center py-20">
         <LoadingSpinner size="lg" />
@@ -131,7 +134,7 @@ export default function ManageUsersPage() {
                         }
                         className="capitalize"
                       >
-                        {user.role}
+                        {tValues(`roles.${toKey(user.role)}`, user.role)}
                       </Badge>
                     </TableCell>
                     <TableCell>
@@ -149,7 +152,7 @@ export default function ManageUsersPage() {
                           <SelectContent>
                             {availableRoles.map(role => (
                               <SelectItem key={role} value={role} className="capitalize">
-                                {role}
+                                {tValues(`roles.${toKey(role)}`, role)}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -170,3 +173,4 @@ export default function ManageUsersPage() {
     </Card>
   );
 }
+

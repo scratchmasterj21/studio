@@ -147,7 +147,8 @@
     "uploadStatus": {
       "success": "アップロード完了",
       "error": "エラー"
-    }
+    },
+    "checkNetworkAndCors": "ネットワーク接続を確認し、R2バケットのCORSポリシーがこのオリジンからのアップロードを許可していることを確認してください。"
   },
   "profilePage": {
     "title": "私のプロフィール",
@@ -191,5 +192,30 @@
       "description": "以下のフォームに記入して、新しいサポートチケットを送信してください。できるだけ早くご連絡いたします。",
       "accessDeniedTitle": "アクセス拒否",
       "accessDeniedMessage": "新しいチケットを作成する権限がありません。"
+  },
+  "ticketValues": {
+    "categories": {
+      "bugReport": "バグ報告",
+      "featureRequest": "機能リクエスト",
+      "generalInquiry": "一般的なお問い合わせ",
+      "billing": "請求関連",
+      "other": "その他"
+    },
+    "priorities": {
+      "low": "低",
+      "medium": "中",
+      "high": "高"
+    },
+    "statuses": {
+      "open": "オープン",
+      "inProgress": "進行中",
+      "resolved": "解決済み",
+      "closed": "クローズ"
+    },
+    "roles": {
+        "user": "ユーザー",
+        "worker": "作業者",
+        "admin": "管理者"
+    }
   }
 }

@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/select";
 import { ticketPriorities, ticketStatuses } from '@/config/site';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { useTranslations } from '@/hooks/useTranslations'; // Import useTranslations
+import { useTranslations } from '@/hooks/useTranslations'; 
 
 type WorkerSortOption = "updatedAt_desc" | "priority_desc" | "priority_asc" | "createdAt_desc";
 
@@ -28,21 +28,22 @@ export default function DashboardPage() {
   const { userProfile, loading: authLoading } = useAuth();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [isLoadingTickets, setIsLoadingTickets] = useState(true);
-  const { t, isLoadingTranslations } = useTranslations('dashboardPage'); // Use translations
+  const { t, isLoadingTranslations } = useTranslations('dashboardPage'); 
+  const { t: tValues } = useTranslations('ticketValues');
 
-  // Admin filters
+
   const [statusFilter, setStatusFilter] = useState<TicketStatus | "all">("all");
   const [priorityFilter, setPriorityFilter] = useState<TicketPriority | "all">("all");
   const [searchTerm, setSearchTerm] = useState("");
 
-  // Worker filters/sort
+
   const [workerSortOption, setWorkerSortOption] = useState<WorkerSortOption>("updatedAt_desc");
 
   const workerSortOptions: { value: WorkerSortOption; label: string }[] = useMemo(() => [
-    { value: "updatedAt_desc", label: t('workerStats.sortBy.lastUpdated') || "Last Updated (Newest First)" },
-    { value: "priority_desc", label: t('workerStats.sortBy.priorityHighToLow') || "Priority (High to Low)" },
-    { value: "priority_asc", label: t('workerStats.sortBy.priorityLowToHigh') || "Priority (Low to High)" },
-    { value: "createdAt_desc", label: t('workerStats.sortBy.creationDate') || "Creation Date (Newest First)" },
+    { value: "updatedAt_desc", label: t('workerStats.sortBy.lastUpdated') },
+    { value: "priority_desc", label: t('workerStats.sortBy.priorityHighToLow') },
+    { value: "priority_asc", label: t('workerStats.sortBy.priorityLowToHigh') },
+    { value: "createdAt_desc", label: t('workerStats.sortBy.creationDate') },
   ], [t]);
 
 
@@ -117,8 +118,10 @@ export default function DashboardPage() {
     };
   }, [tickets, userProfile?.role]);
 
+  const toKey = (str: string) => str.toLowerCase().replace(/\s+/g, '');
 
-  if (authLoading || !userProfile || isLoadingTranslations) {
+
+  if (authLoading || !userProfile || isLoadingTranslations || (tValues && !tValues('statuses.open'))) {
     return (
       <div className="flex justify-center items-center h-[calc(100vh-10rem)]">
         <LoadingSpinner size="lg" />
@@ -237,7 +240,9 @@ export default function DashboardPage() {
                   <SelectContent>
                     <SelectItem value="all">{t('allStatuses')}</SelectItem>
                     {ticketStatuses.map(status => (
-                      <SelectItem key={status} value={status}>{status}</SelectItem>
+                      <SelectItem key={status} value={status}>
+                        {tValues(`statuses.${toKey(status)}`, status)}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -251,7 +256,9 @@ export default function DashboardPage() {
                   <SelectContent>
                     <SelectItem value="all">{t('allPriorities')}</SelectItem>
                     {ticketPriorities.map(priority => (
-                      <SelectItem key={priority} value={priority}>{priority}</SelectItem>
+                      <SelectItem key={priority} value={priority}>
+                        {tValues(`priorities.${toKey(priority)}`, priority)}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>

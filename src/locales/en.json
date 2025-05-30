@@ -47,7 +47,7 @@
         "creationDate": "Creation Date (Newest First)"
       }
     },
-     "userStats": {
+    "userStats": {
       "yourOpenTickets": "Your Open Tickets",
       "yourOpenTicketsDesc": "Awaiting agent response",
       "yourInProgressTickets": "Your In-Progress Tickets",
@@ -147,7 +147,8 @@
     "uploadStatus": {
       "success": "Uploaded",
       "error": "Error"
-    }
+    },
+    "checkNetworkAndCors": "Please check your network connection and ensure the R2 bucket's CORS policy allows uploads from this origin."
   },
   "profilePage": {
     "title": "My Profile",
@@ -191,5 +192,30 @@
       "description": "Fill out the form below to submit a new support ticket. We'll get back to you as soon as possible.",
       "accessDeniedTitle": "Access Denied",
       "accessDeniedMessage": "You do not have permission to create new tickets."
+  },
+  "ticketValues": {
+    "categories": {
+      "bugReport": "Bug Report",
+      "featureRequest": "Feature Request",
+      "generalInquiry": "General Inquiry",
+      "billing": "Billing",
+      "other": "Other"
+    },
+    "priorities": {
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High"
+    },
+    "statuses": {
+      "open": "Open",
+      "inProgress": "In Progress",
+      "resolved": "Resolved",
+      "closed": "Closed"
+    },
+    "roles": {
+        "user": "User",
+        "worker": "Worker",
+        "admin": "Admin"
+    }
   }
 }

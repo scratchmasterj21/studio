@@ -28,13 +28,13 @@ import { createTicket, getUserProfile } from "@/lib/firestore";
 import type { TicketCategory, TicketPriority, UserProfile, Attachment } from "@/lib/types";
 import { ticketCategories, ticketPriorities } from "@/config/site";
 import { useRouter } from 'next/navigation';
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import LoadingSpinner from "../common/LoadingSpinner";
 import { sendEmailViaBrevo } from "@/lib/brevo";
 import { Progress } from "@/components/ui/progress";
 import { UploadCloud, FileText, Image as ImageIcon, Video, Trash2, AlertCircle } from "lucide-react";
 import { v4 as uuidv4 } from 'uuid';
-import { useTranslations } from "@/hooks/useTranslations"; // Import useTranslations
+import { useTranslations } from "@/hooks/useTranslations"; 
 
 const MAX_FILES = 5;
 const MAX_FILE_SIZE_MB = 25; 
@@ -71,6 +71,7 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
   const [uploadableFiles, setUploadableFiles] = useState<UploadableFile[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { t, isLoadingTranslations } = useTranslations('ticketForm'); 
+  const { t: tValues } = useTranslations('ticketValues');
 
   const form = useForm<TicketFormValues>({
     resolver: zodResolver(ticketFormSchema),
@@ -86,7 +87,7 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
     const files = Array.from(event.target.files || []);
     if (uploadableFiles.length + files.length > MAX_FILES) {
       toast({
-        title: t('uploadErrorTitle', { fileName: ''}).replace(': {fileName}', ''), // Generic title
+        title: t('uploadErrorTitle', { fileName: ''}).replace(': {fileName}', ''), 
         description: t('attachmentsLimits', { maxFiles: MAX_FILES, maxFileSizeMB: MAX_FILE_SIZE_MB }),
         variant: "destructive",
       });
@@ -97,7 +98,7 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
       if (file.size > MAX_FILE_SIZE_BYTES) {
         toast({
           title: t('uploadErrorTitle', { fileName: file.name }),
-          description: `${file.name} ${t('exceedsSizeLimit', { maxFileSizeMB: MAX_FILE_SIZE_MB })}`, // You'd add 'exceedsSizeLimit' to locales
+          description: `${file.name} ${t('exceedsSizeLimit', { maxFileSizeMB: MAX_FILE_SIZE_MB })}`,
           variant: "destructive",
         });
         return null; 
@@ -189,7 +190,7 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
 
     } catch (error: any) {
       console.error(`[FileUpload] Error during upload process for ${file.name}:`, error);
-      let detailedErrorMessage = t('uploadErrorGeneric'); // Add 'uploadErrorGeneric' to locales
+      let detailedErrorMessage = t('uploadErrorGeneric'); 
       if (error.message && error.message.toLowerCase().includes('failed to fetch')) {
         detailedErrorMessage = t('uploadFailedFetchError', { fileName: file.name });
       } else if (error.message) {
@@ -199,7 +200,7 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
       setUploadableFiles(prev => prev.map(uf => uf.id === fileId ? { ...uf, status: 'error', error: detailedErrorMessage } : uf));
       toast({
         title: t('uploadErrorTitle', { fileName: file.name }),
-        description: detailedErrorMessage + " " + t('checkNetworkAndCors'), // Add 'checkNetworkAndCors'
+        description: detailedErrorMessage + " " + t('checkNetworkAndCors'),
         variant: "destructive",
       });
     }
@@ -325,9 +326,13 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
   const isUploadingAnyFile = uploadableFiles.some(f => f.status === 'uploading');
   const hasUploadErrors = uploadableFiles.some(f => f.status === 'error');
 
-  if (isLoadingTranslations) {
+  if (isLoadingTranslations || !tValues('categories.bugReport')) { // Check if a known key is loaded
     return <div className="flex justify-center items-center h-64"><LoadingSpinner /></div>;
   }
+  
+  // Helper to convert "Bug Report" to "bugReport" for key lookup
+  const toKey = (str: string) => str.toLowerCase().replace(/\s+/g, '');
+
 
   return (
     <Form {...form}>
@@ -472,7 +477,7 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
                   <SelectContent>
                     {ticketCategories.map((category) => (
                       <SelectItem key={category} value={category}>
-                        {category}
+                        {tValues(`categories.${toKey(category)}`, category)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -496,7 +501,7 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
                   <SelectContent>
                     {ticketPriorities.map((priority) => (
                       <SelectItem key={priority} value={priority}>
-                        {priority}
+                        {tValues(`priorities.${toKey(priority)}`, priority)}
                       </SelectItem>
                     ))}
                   </SelectContent>
