@@ -39,7 +39,13 @@
       "openTickets": "オープンチケット",
       "openTicketsDesc": "現在あなたに割り当てられています",
       "inProgressTickets": "進行中のチケット",
-      "inProgressTicketsDesc": "現在作業中です"
+      "inProgressTicketsDesc": "現在作業中です",
+      "sortBy": {
+        "lastUpdated": "最終更新（新しい順）",
+        "priorityHighToLow": "優先度（高 → 低）",
+        "priorityLowToHigh": "優先度（低 → 高）",
+        "creationDate": "作成日（新しい順）"
+      }
     },
     "userStats": {
       "yourOpenTickets": "あなたのオープンチケット",
@@ -69,17 +75,79 @@
     "attachmentsLimits": "最大{maxFiles}ファイル、各{maxFileSizeMB}MBまで。画像と動画が利用可能です。",
     "attachmentsDescription": "問題を説明するために、スクリーンショット、動画、またはログを添付してください。",
     "selectedFiles": "選択されたファイル：",
-    "uploadError": "アップロードエラー：{fileName}",
+    "uploadErrorTitle": "アップロードエラー：{fileName}",
+    "uploadFailedFetchError": "{fileName} のアップロードに失敗しました。ネットワーク接続とR2 CORS設定を確認してください。",
     "retryUpload": "アップロードを再試行",
     "removeFile": "ファイルを削除",
     "categoryLabel": "カテゴリ",
-    "categoryPlaceholder": "カテゴリを選択",
+    "categoryPlaceholder": "カテゴリを選択してください",
     "priorityLabel": "優先度",
-    "priorityPlaceholder": "優先度レベルを選択",
+    "priorityPlaceholder": "優先度レベルを選択してください",
     "submitButton": "チケットを送信",
     "submittingButton": "送信中...",
     "uploadingButton": "ファイルをアップロード中...",
-    "uploadErrorsMessage": "一部のファイルがアップロードに失敗しました。削除するか、再試行してください。"
+    "uploadErrorsMessage": "一部のファイルがアップロードに失敗しました。削除するか、再試行してください。",
+    "ticketCreatedToast": {
+      "title": "チケット作成完了",
+      "description": "チケット「{ticketTitle}」が送信されました。"
+    },
+    "errorCreatingTicket": {
+      "title": "チケット作成エラー",
+      "description": "チケットの送信中に問題が発生しました。もう一度お試しください。"
+    },
+    "email": {
+      "creator": {
+        "newTicket": {
+          "subject": "FireDeskチケット作成完了：{ticketTitle} (#_app_page_tsx_41282f1c_.js{shortTicketId})",
+          "heading": "新しいチケットが作成されました：{ticketTitle}",
+          "dearUser": "{userName}様,",
+          "body": "サポートチケットを送信いただきありがとうございます。チケット (#_app_page_tsx_41282f1c_.js{shortTicketId}) を受信し、現在処理中です。",
+          "titleLabel": "タイトル",
+          "descriptionLabel": "説明",
+          "categoryLabel": "カテゴリ",
+          "priorityLabel": "優先度",
+          "statusNote": "チケットはデフォルトのサポートエージェントに割り当てられ、現在のステータスは「オープン」です。",
+          "attachmentsLabel": "添付ファイル",
+          "followUp": "できるだけ早くご連絡いたします。"
+        }
+      },
+      "admin": {
+        "newTicket": {
+          "subject": "新規FireDeskチケット（割当済）：{ticketTitle} by {creatorName} (#_app_page_tsx_41282f1c_.js{shortTicketId})",
+          "heading": "新しいチケットが送信されました",
+          "body": "{creatorName} (UID: {userId}) によって新しいサポートチケットが送信されました。",
+          "ticketIdLabel": "チケットID",
+          "titleLabel": "タイトル",
+          "descriptionLabel": "説明",
+          "categoryLabel": "カテゴリ",
+          "priorityLabel": "優先度",
+          "statusNote": "チケットは自動的にデフォルトのサポートエージェントに割り当てられ、ステータスは「オープン」です。",
+          "attachmentsLabel": "添付ファイル"
+        }
+      },
+      "worker": {
+        "defaultAgentName": "サポート担当者",
+        "newTicketAssigned": {
+          "subject": "新しいチケットが割り当てられました：{ticketTitle} (#_app_page_tsx_41282f1c_.js{shortTicketId})",
+          "greeting": "{workerName}様,",
+          "body": "新しいサポートチケットがあなたに自動的に割り当てられました。",
+          "ticketIdLabel": "チケットID",
+          "titleLabel": "タイトル",
+          "createdByLabel": "作成者",
+          "descriptionLabel": "説明",
+          "statusNote": "チケットのステータスは「オープン」です。",
+          "attachmentsLabel": "添付ファイル"
+        }
+      },
+      "footer": {
+        "automatedNotification": "これはFireDeskからの自動通知です。特に指示がない限り、このメールに直接返信しないでください。",
+        "viewTicketHere": "チケットは<a href=\"{ticketLink}\">こちら</a>で確認できます。"
+      }
+    },
+    "uploadStatus": {
+      "success": "アップロード完了",
+      "error": "エラー"
+    }
   },
   "profilePage": {
     "title": "私のプロフィール",
@@ -102,6 +170,20 @@
     "changeRoleHeader": "役割を変更",
     "createdAtHeader": "作成日時",
     "cannotChangeOwnRole": "自分の役割は変更できません",
-    "roleSelectPlaceholder": "役割を変更"
+    "roleSelectPlaceholder": "役割を変更",
+    "toast": {
+      "actionDenied": {
+        "title": "アクション拒否",
+        "description": "自分の役割を変更することはできません。"
+      },
+      "roleUpdated": {
+        "title": "役割更新完了",
+        "description": "ユーザーの役割が {newRole} に正常に更新されました。"
+      },
+      "error": {
+        "title": "エラー",
+        "description": "役割の更新に失敗しました。もう一度お試しください。"
+      }
+    }
   }
 }

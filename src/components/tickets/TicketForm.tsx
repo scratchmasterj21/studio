@@ -70,7 +70,7 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
   const [isSubmittingMainForm, setIsSubmittingMainForm] = useState(false);
   const [uploadableFiles, setUploadableFiles] = useState<UploadableFile[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { t, isLoadingTranslations } = useTranslations('ticketForm'); // Use translations
+  const { t, isLoadingTranslations } = useTranslations('ticketForm'); 
 
   const form = useForm<TicketFormValues>({
     resolver: zodResolver(ticketFormSchema),
@@ -124,12 +124,14 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
 
   const handleFileUpload = async (fileEntry: UploadableFile) => {
     const { file, id: fileId } = fileEntry;
-
+  
+    // Update status to 'uploading' using functional update to ensure latest state
     setUploadableFiles(prevFiles =>
       prevFiles.map(uf => {
         if (uf.id === fileId) {
           if (uf.status === 'uploading' || uf.status === 'success') {
-            return uf;
+            console.log(`[FileUpload] Skipped upload for ${file.name}: Status is ${uf.status}.`);
+            return uf; // Avoid re-uploading or changing status if already processing/done
           }
           return { ...uf, status: 'uploading', progress: 0, error: undefined };
         }
@@ -188,7 +190,7 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
 
     } catch (error: any) {
       console.error(`[FileUpload] Error during upload process for ${file.name}:`, error);
-      let detailedErrorMessage = "Failed to upload file. Check your network connection and R2 CORS settings.";
+      let detailedErrorMessage = "Failed to upload file.";
       if (error.message && error.message.toLowerCase().includes('failed to fetch')) {
         detailedErrorMessage = t('uploadFailedFetchError', { fileName: file.name });
       } else if (error.message) {
@@ -198,7 +200,7 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
       setUploadableFiles(prev => prev.map(uf => uf.id === fileId ? { ...uf, status: 'error', error: detailedErrorMessage } : uf));
       toast({
         title: t('uploadErrorTitle', { fileName: file.name }),
-        description: detailedErrorMessage,
+        description: detailedErrorMessage + " Please check network connection and R2 CORS settings.",
         variant: "destructive",
       });
     }
@@ -518,3 +520,4 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
     </Form>
   );
 }
+

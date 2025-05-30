@@ -39,7 +39,13 @@
       "openTickets": "Open Tickets",
       "openTicketsDesc": "Currently assigned to you",
       "inProgressTickets": "In Progress Tickets",
-      "inProgressTicketsDesc": "Currently being worked on"
+      "inProgressTicketsDesc": "Currently being worked on",
+      "sortBy": {
+        "lastUpdated": "Last Updated (Newest First)",
+        "priorityHighToLow": "Priority (High to Low)",
+        "priorityLowToHigh": "Priority (Low to High)",
+        "creationDate": "Creation Date (Newest First)"
+      }
     },
      "userStats": {
       "yourOpenTickets": "Your Open Tickets",
@@ -69,7 +75,8 @@
     "attachmentsLimits": "Up to {maxFiles} files, {maxFileSizeMB}MB each. Images & videos accepted.",
     "attachmentsDescription": "Attach screenshots, videos, or logs to help explain the issue.",
     "selectedFiles": "Selected Files:",
-    "uploadError": "Upload Error: {fileName}",
+    "uploadErrorTitle": "Upload Error: {fileName}",
+    "uploadFailedFetchError": "Failed to upload {fileName}. Check network connection and R2 CORS settings.",
     "retryUpload": "Retry Upload",
     "removeFile": "Remove File",
     "categoryLabel": "Category",
@@ -79,7 +86,68 @@
     "submitButton": "Submit Ticket",
     "submittingButton": "Submitting...",
     "uploadingButton": "Uploading files...",
-    "uploadErrorsMessage": "Some files failed to upload. Please remove them or retry."
+    "uploadErrorsMessage": "Some files failed to upload. Please remove them or retry.",
+    "ticketCreatedToast": {
+      "title": "Ticket Created",
+      "description": "Your ticket \"{ticketTitle}\" has been submitted."
+    },
+    "errorCreatingTicket": {
+      "title": "Error Creating Ticket",
+      "description": "There was a problem submitting your ticket. Please try again."
+    },
+    "email": {
+      "creator": {
+        "newTicket": {
+          "subject": "FireDesk Ticket Created: {ticketTitle} (#_app_page_tsx_41282f1c_.js{shortTicketId})",
+          "heading": "New Ticket Created: {ticketTitle}",
+          "dearUser": "Dear {userName},",
+          "body": "Thank you for submitting your support ticket. Your ticket (#_app_page_tsx_41282f1c_.js{shortTicketId}) has been received and is now being processed.",
+          "titleLabel": "Title",
+          "descriptionLabel": "Description",
+          "categoryLabel": "Category",
+          "priorityLabel": "Priority",
+          "statusNote": "It has been assigned to our default support agent and its current status is Open.",
+          "attachmentsLabel": "Attachments",
+          "followUp": "We will get back to you as soon as possible."
+        }
+      },
+      "admin": {
+        "newTicket": {
+          "subject": "New FireDesk Ticket (Assigned): {ticketTitle} by {creatorName} (#_app_page_tsx_41282f1c_.js{shortTicketId})",
+          "heading": "New Ticket Submitted",
+          "body": "A new support ticket has been submitted by {creatorName} (UID: {userId}).",
+          "ticketIdLabel": "Ticket ID",
+          "titleLabel": "Title",
+          "descriptionLabel": "Description",
+          "categoryLabel": "Category",
+          "priorityLabel": "Priority",
+          "statusNote": "The ticket has been automatically assigned to the default support agent and its status is Open.",
+          "attachmentsLabel": "Attachments"
+        }
+      },
+      "worker": {
+        "defaultAgentName": "Support Agent",
+        "newTicketAssigned": {
+          "subject": "New Ticket Assigned to You: {ticketTitle} (#_app_page_tsx_41282f1c_.js{shortTicketId})",
+          "greeting": "Hello {workerName},",
+          "body": "A new support ticket has been automatically assigned to you.",
+          "ticketIdLabel": "Ticket ID",
+          "titleLabel": "Title",
+          "createdByLabel": "Created By",
+          "descriptionLabel": "Description",
+          "statusNote": "The ticket status is Open.",
+          "attachmentsLabel": "Attachments"
+        }
+      },
+      "footer": {
+        "automatedNotification": "This is an automated notification from FireDesk. Please do not reply directly to this email unless instructed.",
+        "viewTicketHere": "You can view the ticket <a href=\"{ticketLink}\">here</a>."
+      }
+    },
+    "uploadStatus": {
+      "success": "Uploaded",
+      "error": "Error"
+    }
   },
   "profilePage": {
     "title": "My Profile",
@@ -102,6 +170,20 @@
     "changeRoleHeader": "Change Role",
     "createdAtHeader": "Created At",
     "cannotChangeOwnRole": "Cannot change own role",
-    "roleSelectPlaceholder": "Change role"
+    "roleSelectPlaceholder": "Change role",
+    "toast": {
+      "actionDenied": {
+        "title": "Action Denied",
+        "description": "You cannot change your own role."
+      },
+      "roleUpdated": {
+        "title": "Role Updated",
+        "description": "User role successfully updated to {newRole}."
+      },
+      "error": {
+        "title": "Error",
+        "description": "Failed to update role. Please try again."
+      }
+    }
   }
 }
