@@ -9,7 +9,6 @@ import { getCurrentLocale as getCurrentLocaleServer, getI18n } from '@/lib/i18n/
 import type { Locale } from '@/lib/i18n/settings';
 import { locales, defaultLocale } from '@/lib/i18n/settings';
 
-
 const geistSans = Geist({
   variable: '--font-geist-sans',
   subsets: ['latin'],
@@ -21,7 +20,7 @@ const geistMono = Geist_Mono({
 });
 
 export async function generateMetadata(): Promise<Metadata> {
-  const t = await getI18n(); 
+  const t = await getI18n();
   return {
     title: {
       default: t('header.appName'),
@@ -31,7 +30,6 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
@@ -39,39 +37,41 @@ export const viewport: Viewport = {
 
 interface RootLayoutProps {
   children: React.ReactNode;
-  params: { locale?: string }; 
+  params: { locale?: string };
 }
 
 export default async function RootLayout({
   children,
-  params, 
+  params,
 }: Readonly<RootLayoutProps>) {
-  
+  const paramsLocale = params.locale;
+  console.log(`[RootLayout] Received params.locale: "${paramsLocale}" (Type: ${typeof paramsLocale})`);
+
   let localeToUse: Locale;
+  let serverDeterminedLocale: string | undefined; // Can be undefined
 
   try {
-    // This should be the primary source of truth after middleware.
-    const serverDeterminedLocale = await getCurrentLocaleServer(); 
-    
-    if (locales.includes(serverDeterminedLocale as Locale)) {
+    serverDeterminedLocale = await getCurrentLocaleServer();
+    console.log(`[RootLayout] getCurrentLocaleServer() returned: "${serverDeterminedLocale}" (Type: ${typeof serverDeterminedLocale})`);
+
+    if (serverDeterminedLocale && locales.includes(serverDeterminedLocale as Locale)) {
       localeToUse = serverDeterminedLocale as Locale;
     } else {
-      // This case means getCurrentLocaleServer() returned something unexpected (e.g. string "undefined")
-      console.warn(`[RootLayout] getCurrentLocaleServer() returned "${serverDeterminedLocale}", which is not a supported locale. Attempting fallback.`);
-      if (params.locale && locales.includes(params.locale as Locale)) {
-        localeToUse = params.locale as Locale;
-         console.warn(`[RootLayout] Fallback to params.locale: "${localeToUse}".`);
+      console.warn(`[RootLayout] getCurrentLocaleServer() returned "${serverDeterminedLocale}", which is not a supported locale or is undefined. Attempting fallback using params.locale.`);
+      if (paramsLocale && paramsLocale !== 'undefined' && locales.includes(paramsLocale as Locale)) {
+        localeToUse = paramsLocale as Locale;
+        console.warn(`[RootLayout] Fallback to params.locale: "${localeToUse}".`);
       } else {
         localeToUse = defaultLocale;
-        console.warn(`[RootLayout] Fallback to defaultLocale: "${localeToUse}" (params.locale was "${params.locale}").`);
+        console.warn(`[RootLayout] Fallback to defaultLocale: "${localeToUse}" (params.locale was "${paramsLocale}", serverDeterminedLocale was "${serverDeterminedLocale}").`);
       }
     }
   } catch (e) {
     console.error(`[RootLayout] Error during server locale determination: ${e}. Defaulting to: ${defaultLocale}`);
     localeToUse = defaultLocale;
   }
-  
-  // Final check to ensure localeToUse is one of the strictly defined locales.
+
+  // Final critical check: ensure localeToUse is one of the strictly defined 'en' or 'ja'.
   if (!locales.includes(localeToUse)) {
     console.error(`[RootLayout] CRITICAL: localeToUse ended up as "${localeToUse}" which is invalid. Forcing defaultLocale: "${defaultLocale}".`);
     localeToUse = defaultLocale;
