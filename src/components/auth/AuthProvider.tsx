@@ -37,10 +37,10 @@ export const AuthProvider = ({ children, locale }: AuthProviderProps) => {
   const [isSigningIn, setIsSigningIn] = useState(false);
   const router = useNextRouter();
   const pathname = usePathname();
-  
+
   const currentLocale = locale; // Use the locale passed as a prop
   console.log('[AuthProvider] Initial locale from prop:', currentLocale);
-  
+
   const { toast } = useToast();
 
   useEffect(() => {
@@ -51,7 +51,7 @@ export const AuthProvider = ({ children, locale }: AuthProviderProps) => {
           setUser(firebaseUser);
           const userRef = doc(db, 'users', firebaseUser.uid);
           const userSnap = await getDoc(userRef);
-          
+
           if (userSnap.exists()) {
             setUserProfile(userSnap.data() as UserProfile);
           } else {
@@ -63,7 +63,7 @@ export const AuthProvider = ({ children, locale }: AuthProviderProps) => {
               role: 'user',
               createdAt: serverTimestamp() as Timestamp,
             };
-            
+
             try {
               await setDoc(userRef, newUserProfile);
               setUserProfile(newUserProfile);
@@ -76,61 +76,49 @@ export const AuthProvider = ({ children, locale }: AuthProviderProps) => {
               });
             }
           }
-          
-          let isOnLoginOrRootPath = false;
-          const nonPrefixedLoginPath = '/login';
-          const nonPrefixedRootPath = '/';
-          const localePrefixedLoginPath = `/${currentLocale}/login`;
-          const localePrefixedRootPath1 = `/${currentLocale}`;
-          const localePrefixedRootPath2 = `/${currentLocale}/`;
 
+          let isOnLoginOrRootPath = false;
           if (currentLocale === defaultLocale) {
-            isOnLoginOrRootPath = (pathname === nonPrefixedLoginPath || pathname === nonPrefixedRootPath);
+            isOnLoginOrRootPath = (pathname === '/login' || pathname === '/');
           } else {
             isOnLoginOrRootPath = (
-              pathname === localePrefixedLoginPath || 
-              pathname === localePrefixedRootPath1 || 
-              pathname === localePrefixedRootPath2
+              pathname === `/${currentLocale}/login` ||
+              pathname === `/${currentLocale}` ||
+              pathname === `/${currentLocale}/`
             );
           }
 
           if (isOnLoginOrRootPath) {
-             const dashboardPath = currentLocale === defaultLocale ? '/dashboard' : `/${currentLocale}/dashboard`;
-             console.log(`[AuthProvider] User logged in, on login/root. Redirecting to: ${dashboardPath}`);
-             router.replace(dashboardPath);
+             // Always redirect to base path; middleware handles locale prefixing.
+             console.log(`[AuthProvider] User logged in, on login/root. Redirecting to base path: /dashboard`);
+             router.replace('/dashboard');
           }
-        } else { 
+        } else {
           setUser(null);
           setUserProfile(null);
-          
-          let isOnPublicPath = false;
-          const nonPrefixedLoginPath = '/login';
-          const nonPrefixedRootPath = '/';
-          const localePrefixedLoginPath = `/${currentLocale}/login`;
-          const localePrefixedRootPath1 = `/${currentLocale}`;
-          const localePrefixedRootPath2 = `/${currentLocale}/`;
 
+          let isOnPublicPath = false;
           if (currentLocale === defaultLocale) {
-            isOnPublicPath = (pathname === nonPrefixedLoginPath || pathname === nonPrefixedRootPath);
+            isOnPublicPath = (pathname === '/login' || pathname === '/');
           } else {
             isOnPublicPath = (
-              pathname === localePrefixedLoginPath || 
-              pathname === localePrefixedRootPath1 || 
-              pathname === localePrefixedRootPath2
+              pathname === `/${currentLocale}/login` ||
+              pathname === `/${currentLocale}` ||
+              pathname === `/${currentLocale}/`
             );
           }
-          
+
           const isNextInternalPath = pathname.startsWith('/_next/');
-          
+
           if (!isOnPublicPath && !isNextInternalPath) {
-            const loginRedirectPath = currentLocale === defaultLocale ? '/login' : `/${currentLocale}/login`;
-            console.log(`[AuthProvider] User not logged in, not on public path. Redirecting to: ${loginRedirectPath}`);
-            router.replace(loginRedirectPath);
+            // Always redirect to base path; middleware handles locale prefixing.
+            console.log(`[AuthProvider] User not logged in, not on public path. Redirecting to base path: /login`);
+            router.replace('/login');
           }
         }
       } catch (error) {
         console.error('[AuthProvider] Auth state change error:', error);
-        setUser(null); 
+        setUser(null);
         setUserProfile(null);
       } finally {
         setLoading(false);
@@ -145,10 +133,10 @@ export const AuthProvider = ({ children, locale }: AuthProviderProps) => {
       console.log('[AuthProvider] Sign-in already in progress...');
       return;
     }
-    
+
     setIsSigningIn(true);
-    setLoading(true); 
-    
+    setLoading(true);
+
     try {
       const result = await signInWithPopup(auth, googleProvider);
       console.log('[AuthProvider] Successfully signed in:', result.user.email);
@@ -161,7 +149,7 @@ export const AuthProvider = ({ children, locale }: AuthProviderProps) => {
     } catch (error) {
       console.error('[AuthProvider] Error signing in with Google:', error);
       const firebaseError = error as FirebaseError;
-      
+
       let title = 'Sign In Failed';
       let description = firebaseError.message || 'An unexpected error occurred during sign-in. Please try again.';
 
@@ -191,27 +179,27 @@ export const AuthProvider = ({ children, locale }: AuthProviderProps) => {
       toast({ title, description, variant: 'destructive' });
     } finally {
       setIsSigningIn(false);
-      setLoading(false); 
+      setLoading(false);
     }
   };
 
   const signOut = async () => {
-    if (loading) return; 
-    
+    if (loading) return;
+
     setLoading(true);
-    
+
     try {
       await firebaseSignOut(auth);
       setUser(null);
       setUserProfile(null);
-      const loginRedirectPath = currentLocale === defaultLocale ? '/login' : `/${currentLocale}/login`;
-      router.replace(loginRedirectPath);
-      toast({ 
-        title: 'Signed Out', 
+      // Always redirect to base path; middleware handles locale prefixing.
+      router.replace('/login');
+      toast({
+        title: 'Signed Out',
         description: "You have been successfully signed out.",
         variant: 'default',
       });
-      
+
     } catch (error) {
       console.error('[AuthProvider] Error signing out:', error);
       const firebaseError = error as FirebaseError;
@@ -224,21 +212,16 @@ export const AuthProvider = ({ children, locale }: AuthProviderProps) => {
       setLoading(false);
     }
   };
-  
-  let isOnPublicPathCheck = false;
-  const nonPrefixedLoginPathCheck = '/login';
-  const nonPrefixedRootPathCheck = '/';
-  const localePrefixedLoginPathCheck = `/${currentLocale}/login`;
-  const localePrefixedRootPathCheck1 = `/${currentLocale}`;
-  const localePrefixedRootPathCheck2 = `/${currentLocale}/`;
 
+  // Initial loading screen logic (for non-public paths)
+  let isOnPublicPathCheck = false;
   if (currentLocale === defaultLocale) {
-    isOnPublicPathCheck = (pathname === nonPrefixedLoginPathCheck || pathname === nonPrefixedRootPathCheck);
+    isOnPublicPathCheck = (pathname === '/login' || pathname === '/');
   } else {
     isOnPublicPathCheck = (
-      pathname === localePrefixedLoginPathCheck || 
-      pathname === localePrefixedRootPathCheck1 || 
-      pathname === localePrefixedRootPathCheck2
+      pathname === `/${currentLocale}/login` ||
+      pathname === `/${currentLocale}` ||
+      pathname === `/${currentLocale}/`
     );
   }
 
@@ -251,12 +234,12 @@ export const AuthProvider = ({ children, locale }: AuthProviderProps) => {
   }
 
   return (
-    <AuthContext.Provider 
-      value={{ 
-        user, 
-        userProfile, 
-        loading: loading || isSigningIn, 
-        signInWithGoogle, 
+    <AuthContext.Provider
+      value={{
+        user,
+        userProfile,
+        loading: loading || isSigningIn,
+        signInWithGoogle,
         signOut,
         currentLocale
       }}

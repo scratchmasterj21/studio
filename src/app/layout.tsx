@@ -79,7 +79,7 @@ export default async function RootLayout({
   return (
     <html lang={localeToUse} suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <I18nProviderClient locale={localeToUse}>
+        <I18nProviderClient locale={localeToUse} key={localeToUse}>
           <AuthProvider locale={localeToUse}>
             {children}
             <Toaster />
