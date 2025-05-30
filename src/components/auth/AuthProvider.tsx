@@ -77,47 +77,44 @@ export const AuthProvider = ({ children, locale }: AuthProviderProps) => {
             }
           }
           
-          const loginPath = `/${currentLocale}/login`;
-          const rootPath = `/${currentLocale}`;
-          const nonPrefixedLoginPath = '/login';
-          const nonPrefixedRootPath = '/';
+          // Determine if current path is a login/root path
+          let isOnLoginOrRootPath = false;
+          if (currentLocale === defaultLocale) {
+            // For default locale, paths are /login or /
+            isOnLoginOrRootPath = (pathname === '/login' || pathname === '/');
+          } else {
+            // For other locales, paths are /<locale>/login or /<locale> or /<locale>/
+            isOnLoginOrRootPath = (
+              pathname === `/${currentLocale}/login` || 
+              pathname === `/${currentLocale}` || 
+              pathname === `/${currentLocale}/`
+            );
+          }
 
-          const isLoginOrRoot = 
-            pathname === loginPath || 
-            pathname === rootPath || 
-            pathname === nonPrefixedLoginPath || 
-            pathname === nonPrefixedRootPath ||
-            (currentLocale === defaultLocale && (pathname === '/login' || pathname === '/'));
-
-
-          if (isLoginOrRoot) {
-             // For default locale, redirect to /dashboard, for others /<locale>/dashboard
+          if (isOnLoginOrRootPath) {
              const dashboardPath = currentLocale === defaultLocale ? '/dashboard' : `/${currentLocale}/dashboard`;
              console.log(`[AuthProvider] User logged in, on login/root. Redirecting to: ${dashboardPath}`);
              router.replace(dashboardPath);
           }
-        } else {
+        } else { // No firebaseUser
           setUser(null);
           setUserProfile(null);
           
-          const publicPaths = [
-            `/${currentLocale}/login`,
-            nonPrefixedLoginPath, // For default locale
-            // For default locale root, it can be '/' or '/en' if 'en' is default.
-            // Assuming default locale does not have prefix.
-          ];
-          
-          // Check if current pathname, without considering locale prefix for default, is a public path
-          let isPublic = false;
+          // Determine if current path is public (login/root)
+          let isOnPublicPath = false;
           if (currentLocale === defaultLocale) {
-            isPublic = pathname === '/login' || pathname === '/';
+            isOnPublicPath = (pathname === '/login' || pathname === '/');
           } else {
-            isPublic = pathname === `/${currentLocale}/login` || pathname === `/${currentLocale}/` || pathname === `/${currentLocale}`;
+            isOnPublicPath = (
+              pathname === `/${currentLocale}/login` || 
+              pathname === `/${currentLocale}` || 
+              pathname === `/${currentLocale}/`
+            );
           }
           
           const isNextInternalPath = pathname.startsWith('/_next/');
           
-          if (!isPublic && !isNextInternalPath) {
+          if (!isOnPublicPath && !isNextInternalPath) {
             const loginRedirectPath = currentLocale === defaultLocale ? '/login' : `/${currentLocale}/login`;
             console.log(`[AuthProvider] User not logged in, not on public path. Redirecting to: ${loginRedirectPath}`);
             router.replace(loginRedirectPath);
@@ -125,7 +122,7 @@ export const AuthProvider = ({ children, locale }: AuthProviderProps) => {
         }
       } catch (error) {
         console.error('[AuthProvider] Auth state change error:', error);
-        setUser(null);
+        setUser(null); // Ensure user state is cleared on error
         setUserProfile(null);
       } finally {
         setLoading(false);
@@ -133,7 +130,7 @@ export const AuthProvider = ({ children, locale }: AuthProviderProps) => {
     });
 
     return () => unsubscribe();
-  }, [router, toast, pathname, currentLocale]);
+  }, [router, toast, pathname, currentLocale]); // currentLocale is now correctly from props
 
   const signInWithGoogle = async () => {
     if (isSigningIn) {
@@ -142,7 +139,7 @@ export const AuthProvider = ({ children, locale }: AuthProviderProps) => {
     }
     
     setIsSigningIn(true);
-    setLoading(true); // Set loading to true when sign-in starts
+    setLoading(true); 
     
     try {
       const result = await signInWithPopup(auth, googleProvider);
@@ -220,15 +217,15 @@ export const AuthProvider = ({ children, locale }: AuthProviderProps) => {
     }
   };
   
-  let isOnPublicPath = false;
+  let isOnPublicPathCheck = false;
   if (currentLocale === defaultLocale) {
-    isOnPublicPath = pathname === '/login' || pathname === '/';
+    isOnPublicPathCheck = pathname === '/login' || pathname === '/';
   } else {
-    isOnPublicPath = pathname === `/${currentLocale}/login` || pathname === `/${currentLocale}/` || pathname === `/${currentLocale}`;
+    isOnPublicPathCheck = pathname === `/${currentLocale}/login` || pathname === `/${currentLocale}` || pathname === `/${currentLocale}/`;
   }
 
 
-  if (loading && !isOnPublicPath) {
+  if (loading && !isOnPublicPathCheck) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <LoadingSpinner size="lg" />
@@ -244,7 +241,7 @@ export const AuthProvider = ({ children, locale }: AuthProviderProps) => {
         loading: loading || isSigningIn, 
         signInWithGoogle, 
         signOut,
-        currentLocale
+        currentLocale // Expose the prop-derived locale
       }}
     >
       {children}
