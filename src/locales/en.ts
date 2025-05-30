@@ -8,7 +8,7 @@ export default {
     profile: 'Profile',
     signOut: 'Sign Out',
     language: 'Language',
-    appName: 'FireDesk',
+    appName: 'FireDesk', // Added for metadata
   },
   loginPage: {
     title: 'FireDesk',
@@ -56,5 +56,4 @@ export default {
   dashboardLayout: {
     footer: 'FireDesk © {year}',
   },
-  // Add more keys as needed
 } as const;

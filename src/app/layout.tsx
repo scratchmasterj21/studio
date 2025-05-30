@@ -5,7 +5,7 @@ import './globals.css';
 import { AuthProvider } from '@/components/auth/AuthProvider';
 import { Toaster } from '@/components/ui/toaster';
 import { I18nProviderClient } from '@/lib/i18n/client';
-import { getCurrentLocale, getI18n } from '@/lib/i18n/server'; // getCurrentLocale from server
+import { getCurrentLocale as getCurrentLocaleServer, getI18n } from '@/lib/i18n/server'; // Aliased
 import type { Locale } from '@/lib/i18n/settings';
 import { locales, defaultLocale } from '@/lib/i18n/settings';
 
@@ -21,7 +21,7 @@ const geistMono = Geist_Mono({
 });
 
 export async function generateMetadata(): Promise<Metadata> {
-  const t = await getI18n(); // Fetch translations on the server
+  const t = await getI18n(); 
   return {
     title: {
       default: t('header.appName'),
@@ -39,38 +39,45 @@ export const viewport: Viewport = {
 
 interface RootLayoutProps {
   children: React.ReactNode;
-  params: { locale?: string }; // params.locale might be undefined for default locale
+  params: { locale?: string }; 
 }
 
 export default async function RootLayout({
   children,
-  // params is available but we will primarily rely on getCurrentLocale from the server i18n setup
+  params, 
 }: Readonly<RootLayoutProps>) {
   
   let localeToUse: Locale;
+
   try {
-    const serverDeterminedLocale = await getCurrentLocale(); // This is from your @/lib/i18n/server.ts
+    // This should be the primary source of truth after middleware.
+    const serverDeterminedLocale = await getCurrentLocaleServer(); 
     
-    // Explicitly check if serverDeterminedLocale is the string "undefined"
-    if (typeof serverDeterminedLocale === 'string' && serverDeterminedLocale.toLowerCase() === 'undefined') {
-      console.warn(`[RootLayout] getCurrentLocale() returned the string "undefined". Defaulting to: ${defaultLocale}`);
-      localeToUse = defaultLocale;
-    } else if (locales.includes(serverDeterminedLocale as Locale)) {
+    if (locales.includes(serverDeterminedLocale as Locale)) {
       localeToUse = serverDeterminedLocale as Locale;
     } else {
-      // This handles cases where serverDeterminedLocale is undefined, null, 
-      // or an unsupported string
-      console.warn(`[RootLayout] Locale from server ("${serverDeterminedLocale}") is not valid or not in supported locales [${locales.join(', ')}]. Defaulting to: ${defaultLocale}`);
-      localeToUse = defaultLocale;
+      // This case means getCurrentLocaleServer() returned something unexpected (e.g. string "undefined")
+      console.warn(`[RootLayout] getCurrentLocaleServer() returned "${serverDeterminedLocale}", which is not a supported locale. Attempting fallback.`);
+      if (params.locale && locales.includes(params.locale as Locale)) {
+        localeToUse = params.locale as Locale;
+         console.warn(`[RootLayout] Fallback to params.locale: "${localeToUse}".`);
+      } else {
+        localeToUse = defaultLocale;
+        console.warn(`[RootLayout] Fallback to defaultLocale: "${localeToUse}" (params.locale was "${params.locale}").`);
+      }
     }
   } catch (e) {
-    // Catch any error during locale determination (e.g., if getCurrentLocale throws)
-    console.error(`[RootLayout] Error fetching server locale: ${e}. Defaulting to: ${defaultLocale}`);
+    console.error(`[RootLayout] Error during server locale determination: ${e}. Defaulting to: ${defaultLocale}`);
     localeToUse = defaultLocale;
   }
   
-  // This log is crucial to verify what value is being passed to I18nProviderClient
-  console.log(`[RootLayout] Effective locale for I18nProviderClient: "${localeToUse}" (type: ${typeof localeToUse})`);
+  // Final check to ensure localeToUse is one of the strictly defined locales.
+  if (!locales.includes(localeToUse)) {
+    console.error(`[RootLayout] CRITICAL: localeToUse ended up as "${localeToUse}" which is invalid. Forcing defaultLocale: "${defaultLocale}".`);
+    localeToUse = defaultLocale;
+  }
+
+  console.log(`[RootLayout] Effective locale for I18nProviderClient: "${localeToUse}" (Type: ${typeof localeToUse})`);
 
   return (
     <html lang={localeToUse} suppressHydrationWarning>

@@ -8,7 +8,7 @@ export default {
     profile: 'プロフィール',
     signOut: 'サインアウト',
     language: '言語',
-    appName: 'ファイアデスク',
+    appName: 'ファイアデスク', // Added for metadata
   },
   loginPage: {
     title: 'ファイアデスク',
@@ -56,5 +56,4 @@ export default {
   dashboardLayout: {
     footer: 'ファイアデスク © {year}',
   },
-  // Add more keys as needed
 } as const;
