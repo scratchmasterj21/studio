@@ -98,10 +98,10 @@
     "email": {
       "creator": {
         "newTicket": {
-          "subject": "FireDesk Ticket Created: {ticketTitle} (#_app_page_tsx_41282f1c_.js{shortTicketId})",
+          "subject": "FireDesk Ticket Created: {ticketTitle} (#{shortTicketId})",
           "heading": "New Ticket Created: {ticketTitle}",
           "dearUser": "Dear {userName},",
-          "body": "Thank you for submitting your support ticket. Your ticket (#_app_page_tsx_41282f1c_.js{shortTicketId}) has been received and is now being processed.",
+          "body": "Thank you for submitting your support ticket. Your ticket (#{shortTicketId}) has been received and is now being processed.",
           "titleLabel": "Title",
           "descriptionLabel": "Description",
           "categoryLabel": "Category",
@@ -113,7 +113,7 @@
       },
       "admin": {
         "newTicket": {
-          "subject": "New FireDesk Ticket (Assigned): {ticketTitle} by {creatorName} (#_app_page_tsx_41282f1c_.js{shortTicketId})",
+          "subject": "New FireDesk Ticket (Assigned): {ticketTitle} by {creatorName} (#{shortTicketId})",
           "heading": "New Ticket Submitted",
           "body": "A new support ticket has been submitted by {creatorName} (UID: {userId}).",
           "ticketIdLabel": "Ticket ID",
@@ -128,7 +128,7 @@
       "worker": {
         "defaultAgentName": "Support Agent",
         "newTicketAssigned": {
-          "subject": "New Ticket Assigned to You: {ticketTitle} (#_app_page_tsx_41282f1c_.js{shortTicketId})",
+          "subject": "New Ticket Assigned to You: {ticketTitle} (#{shortTicketId})",
           "greeting": "Hello {workerName},",
           "body": "A new support ticket has been automatically assigned to you.",
           "ticketIdLabel": "Ticket ID",
@@ -185,5 +185,11 @@
         "description": "Failed to update role. Please try again."
       }
     }
+  },
+  "newTicketPage": {
+      "title": "Create New Support Ticket",
+      "description": "Fill out the form below to submit a new support ticket. We'll get back to you as soon as possible.",
+      "accessDeniedTitle": "Access Denied",
+      "accessDeniedMessage": "You do not have permission to create new tickets."
   }
 }

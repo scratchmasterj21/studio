@@ -86,8 +86,8 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
     const files = Array.from(event.target.files || []);
     if (uploadableFiles.length + files.length > MAX_FILES) {
       toast({
-        title: "Too many files",
-        description: `You can upload a maximum of ${MAX_FILES} files.`,
+        title: t('uploadErrorTitle', { fileName: ''}).replace(': {fileName}', ''), // Generic title
+        description: t('attachmentsLimits', { maxFiles: MAX_FILES, maxFileSizeMB: MAX_FILE_SIZE_MB }),
         variant: "destructive",
       });
       return;
@@ -96,8 +96,8 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
     const newUploadableFiles: UploadableFile[] = files.map(file => {
       if (file.size > MAX_FILE_SIZE_BYTES) {
         toast({
-          title: "File too large",
-          description: `${file.name} exceeds the ${MAX_FILE_SIZE_MB}MB size limit.`,
+          title: t('uploadErrorTitle', { fileName: file.name }),
+          description: `${file.name} ${t('exceedsSizeLimit', { maxFileSizeMB: MAX_FILE_SIZE_MB })}`, // You'd add 'exceedsSizeLimit' to locales
           variant: "destructive",
         });
         return null; 
@@ -125,13 +125,12 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
   const handleFileUpload = async (fileEntry: UploadableFile) => {
     const { file, id: fileId } = fileEntry;
   
-    // Update status to 'uploading' using functional update to ensure latest state
     setUploadableFiles(prevFiles =>
       prevFiles.map(uf => {
         if (uf.id === fileId) {
           if (uf.status === 'uploading' || uf.status === 'success') {
             console.log(`[FileUpload] Skipped upload for ${file.name}: Status is ${uf.status}.`);
-            return uf; // Avoid re-uploading or changing status if already processing/done
+            return uf;
           }
           return { ...uf, status: 'uploading', progress: 0, error: undefined };
         }
@@ -190,7 +189,7 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
 
     } catch (error: any) {
       console.error(`[FileUpload] Error during upload process for ${file.name}:`, error);
-      let detailedErrorMessage = "Failed to upload file.";
+      let detailedErrorMessage = t('uploadErrorGeneric'); // Add 'uploadErrorGeneric' to locales
       if (error.message && error.message.toLowerCase().includes('failed to fetch')) {
         detailedErrorMessage = t('uploadFailedFetchError', { fileName: file.name });
       } else if (error.message) {
@@ -200,7 +199,7 @@ export default function TicketForm({ userProfile }: TicketFormProps) {
       setUploadableFiles(prev => prev.map(uf => uf.id === fileId ? { ...uf, status: 'error', error: detailedErrorMessage } : uf));
       toast({
         title: t('uploadErrorTitle', { fileName: file.name }),
-        description: detailedErrorMessage + " Please check network connection and R2 CORS settings.",
+        description: detailedErrorMessage + " " + t('checkNetworkAndCors'), // Add 'checkNetworkAndCors'
         variant: "destructive",
       });
     }

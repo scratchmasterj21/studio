@@ -98,10 +98,10 @@
     "email": {
       "creator": {
         "newTicket": {
-          "subject": "FireDeskチケット作成完了：{ticketTitle} (#_app_page_tsx_41282f1c_.js{shortTicketId})",
+          "subject": "FireDeskチケット作成完了：{ticketTitle} (#{shortTicketId})",
           "heading": "新しいチケットが作成されました：{ticketTitle}",
           "dearUser": "{userName}様,",
-          "body": "サポートチケットを送信いただきありがとうございます。チケット (#_app_page_tsx_41282f1c_.js{shortTicketId}) を受信し、現在処理中です。",
+          "body": "サポートチケットを送信いただきありがとうございます。チケット (#{shortTicketId}) を受信し、現在処理中です。",
           "titleLabel": "タイトル",
           "descriptionLabel": "説明",
           "categoryLabel": "カテゴリ",
@@ -113,7 +113,7 @@
       },
       "admin": {
         "newTicket": {
-          "subject": "新規FireDeskチケット（割当済）：{ticketTitle} by {creatorName} (#_app_page_tsx_41282f1c_.js{shortTicketId})",
+          "subject": "新規FireDeskチケット（割当済）：{ticketTitle} by {creatorName} (#{shortTicketId})",
           "heading": "新しいチケットが送信されました",
           "body": "{creatorName} (UID: {userId}) によって新しいサポートチケットが送信されました。",
           "ticketIdLabel": "チケットID",
@@ -128,7 +128,7 @@
       "worker": {
         "defaultAgentName": "サポート担当者",
         "newTicketAssigned": {
-          "subject": "新しいチケットが割り当てられました：{ticketTitle} (#_app_page_tsx_41282f1c_.js{shortTicketId})",
+          "subject": "新しいチケットが割り当てられました：{ticketTitle} (#{shortTicketId})",
           "greeting": "{workerName}様,",
           "body": "新しいサポートチケットがあなたに自動的に割り当てられました。",
           "ticketIdLabel": "チケットID",
@@ -185,5 +185,11 @@
         "description": "役割の更新に失敗しました。もう一度お試しください。"
       }
     }
+  },
+  "newTicketPage": {
+      "title": "新しいサポートチケットを作成",
+      "description": "以下のフォームに記入して、新しいサポートチケットを送信してください。できるだけ早くご連絡いたします。",
+      "accessDeniedTitle": "アクセス拒否",
+      "accessDeniedMessage": "新しいチケットを作成する権限がありません。"
   }
 }
