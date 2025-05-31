@@ -195,9 +195,9 @@
   },
   "ticketValues": {
     "categories": {
-      "bugReport": "Bug Report",
-      "featureRequest": "Feature Request",
-      "generalInquiry": "General Inquiry",
+      "bugreport": "Bug Report",
+      "featurerequest": "Feature Request",
+      "generalinquiry": "General Inquiry",
       "billing": "Billing",
       "other": "Other"
     },
@@ -208,7 +208,7 @@
     },
     "statuses": {
       "open": "Open",
-      "inProgress": "In Progress",
+      "inprogress": "In Progress",
       "resolved": "Resolved",
       "closed": "Closed"
     },

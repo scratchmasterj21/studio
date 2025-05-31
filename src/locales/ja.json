@@ -195,9 +195,9 @@
   },
   "ticketValues": {
     "categories": {
-      "bugReport": "バグ報告",
-      "featureRequest": "機能リクエスト",
-      "generalInquiry": "一般的なお問い合わせ",
+      "bugreport": "バグ報告",
+      "featurerequest": "機能リクエスト",
+      "generalinquiry": "一般的なお問い合わせ",
       "billing": "請求関連",
       "other": "その他"
     },
@@ -208,7 +208,7 @@
     },
     "statuses": {
       "open": "オープン",
-      "inProgress": "進行中",
+      "inprogress": "進行中",
       "resolved": "解決済み",
       "closed": "クローズ"
     },
